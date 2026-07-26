@@ -1,3 +1,11 @@
+//
+//  Analysis.swift
+//  Grammar-REPL
+//
+//  Created by Ulf Akerstedt-Inoue on 2026/07/66.
+//  Copyright © 2026 hakkabon software. All rights reserved.
+//
+
 import Grammar
 
 public struct LLConflict: Hashable {

@@ -8,7 +8,7 @@ let package = Package(
     platforms: [.macOS(.v13), .iOS(.v14)],
     products: [
         .executable(name: "grammar-repl", targets: ["grammar-repl"]),
-        .library(name: "GrammarREPLCore", targets: ["GrammarREPLCore"]),
+        .library(name: "GrammarReplLib", targets: ["GrammarReplLib"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.6.2"),
@@ -22,7 +22,7 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "GrammarREPLCore",
+            name: "GrammarReplLib",
             dependencies: [
                 .product(name: "Grammar", package: "Grammar"),
                 .product(name: "Parser", package: "Parser"),
@@ -31,19 +31,22 @@ let package = Package(
                 .product(name: "RNGLR-Parser", package: "RNGLR-Parser"),
                 .product(name: "LR-Parsing", package: "LR-Parsing"),
             ],
-            path: "Sources/GrammarREPLCore"
+            path: "Sources/GrammarReplLib"
         ),
         .executableTarget(
             name: "grammar-repl",
             dependencies: [
-                "GrammarREPLCore",
+                "GrammarReplLib",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
             path: "Sources/CLI"
         ),
         .testTarget(
-            name: "GrammarREPLCoreTests",
-            dependencies: ["GrammarREPLCore", .product(name: "Grammar", package: "Grammar")]
+            name: "GrammarReplLibTests",
+            dependencies: [
+                "GrammarReplLib",
+                .product(name: "Grammar", package: "Grammar")
+            ]
         ),
     ]
 )

@@ -1,7 +1,7 @@
 import Testing
 import Foundation
 import Grammar
-@testable import GrammarREPLCore
+@testable import GrammarReplLib
 
 @Suite("Command decoding")
 struct CommandTests {
