@@ -13,6 +13,12 @@ useful without duplicating those facilities, and provides a foundation for later
 LR conflict inspection, error recovery experiments, tracing, and graphical
 grammar artifacts.
 
+[![Swift 5.9+](https://img.shields.io/badge/Swift-5.9%2B-orange.svg)](https://swift.org)  
+[![Platforms](https://img.shields.io/badge/platforms-macOS%2011%20%7C%20iOS%2014-blue.svg)](https://developer.apple.com/swift/)  
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)  
+
+---
+
 ## Why a grammar REPL?
 
 Parser generators are often experienced as black boxes. A grammar goes in and a
@@ -182,12 +188,12 @@ Loads a grammar and replaces the active session grammar.
 
 The notation is inferred from the filename extension:
 
-| Extension | Grammar initializer | Start argument |
-|---|---|---|
-| `.bnf` | `Grammar(bnf:start:)` | required |
-| `.ebnf` | `Grammar(ebnf:start:)` | required |
-| `.wsn` | `Grammar(wsn:start:)` | required |
-| `.gen` | `Grammar(gen:)` | read from the grammar |
+| Extension | Grammar initializer    | Start argument        |
+| --------- | ---------------------- | --------------------- |
+| `.bnf`    | `Grammar(bnf:start:)`  | required              |
+| `.ebnf`   | `Grammar(ebnf:start:)` | required              |
+| `.wsn`    | `Grammar(wsn:start:)`  | required              |
+| `.gen`    | `Grammar(gen:)`        | read from the grammar |
 
 Loading a grammar clears the previous input and parse trees. This prevents a
 tree produced by an old grammar from being presented as a result of the newly
@@ -418,12 +424,12 @@ lexemes.
 
 The session follows simple invalidation rules:
 
-| Operation | Grammar | Last input | Last trees |
-|---|---:|---:|---:|
-| load/reload | replaced | cleared | cleared |
-| parser selection | retained | retained | cleared |
-| successful parse | retained | replaced | replaced |
-| analysis command | retained | retained | retained |
+| Operation        | Grammar  | Last input | Last trees |
+| ---------------- | --------:| ----------:| ----------:|
+| load/reload      | replaced | cleared    | cleared    |
+| parser selection | retained | retained   | cleared    |
+| successful parse | retained | replaced   | replaced   |
+| analysis command | retained | retained   | retained   |
 
 ### Grammar analysis
 
@@ -669,20 +675,8 @@ Expected properties:
 - tree leaves display source lexemes rather than index ranges;
 - the process exits normally.
 
-## Suggested development sequence
+---
 
-The next useful increments are:
+## License
 
-1. extract command/session code into a testable library target;
-2. add unit tests for command decoding, state invalidation, and LL conflicts;
-3. move LL conflict results into a shared structured analysis API;
-4. expose LR generation artifacts and add `:conflicts`, `:state`, and
-   `:explain`;
-5. add shortest conflict witnesses;
-6. introduce shared parser outcomes and diagnostics;
-7. add panic-mode recovery, then bounded local repair;
-8. connect graphical artifact renderers;
-9. add history and completion only after the semantic commands stabilize.
-
-Keeping this order ensures that the REPL grows by presenting reusable ecosystem
-capabilities rather than becoming a second implementation of them.
+MIT License — see [LICENSE](LICENSE) for details.
