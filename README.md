@@ -63,7 +63,10 @@ The prototype currently supports:
 - displaying FIRST and FOLLOW sets;
 - calculating and displaying PREDICT sets for individual productions;
 - detecting pairwise LL(1) PREDICT-set conflicts;
-- selecting Earley, CYK, or RNGLR as the runtime parser;
+- selecting Earley, CYK, RNGLR, LR(0), SLR, LALR, or canonical LR(1);
+- inspecting generated LR states, transitions, ACTION/GOTO tables, conflicts,
+  and shortest conflict witnesses;
+- structured parser outcomes and bounded local repair in deterministic LR modes;
 - parsing sample input without leaving the session;
 - retaining every derivation returned by the selected parser;
 - displaying a selected parse tree with source lexemes at its leaves;
@@ -72,11 +75,7 @@ The prototype currently supports:
 The prototype does **not** yet implement:
 
 - LL(1) runtime parsing through the `LL-Parsing` package;
-- LR(0), SLR, LALR, or canonical LR(1) runtime parsing;
-- LR state, ACTION, or GOTO inspection;
-- shift/reduce or reduce/reduce conflict reports;
-- conflict witnesses or precedence-based conflict resolution;
-- panic-mode or local-repair error recovery;
+- precedence-based conflict resolution;
 - parser tracing;
 - command history or completion;
 - graphical rendering.
@@ -219,7 +218,7 @@ Displays the loaded `Grammar` value. This is the normalized grammar consumed by
 the parser packages and can differ structurally from the original EBNF or WSN
 source after notation lowering.
 
-### `:parser [earley|cyk|rnglr]`
+### `:parser [earley|cyk|rnglr|lr0|slr|lalr|lr1]`
 
 With no valid argument, displays the current parser and available choices:
 
@@ -257,8 +256,19 @@ one token of lookahead. A nonempty intersection is reported as an LL(1)
 conflict, including the nonterminal, overlapping lookaheads, and both
 productions.
 
-At present, `:check` is an LL(1) analysis plus a grammar summary. It does not
-generate an LR table and does not diagnose LR conflicts.
+When an LR parser is selected, `:check` also generates and caches its automaton
+and reports state and LR-conflict counts.
+
+### `:conflicts`, `:state`, and `:explain`
+
+`:conflicts` lists shared structured LL conflicts in generalized-parser modes,
+or LR shift/reduce and reduce/reduce conflicts in LR modes. `:state N` renders
+the items and outgoing transitions of state `N`. `:explain N` shows the
+one-based LR conflict `N`, the conflicting actions, its state items, and a
+shortest terminal witness reaching the conflict lookahead.
+
+Conflicted LR grammars still produce an inspectable generation artifact, but
+the deterministic runtime rejects them until conflicts are resolved.
 
 ### `:first <nonterminal>`
 
@@ -369,8 +379,9 @@ Last input: print 1 + 2 * 3;
 
 ## Architecture and inner workings
 
-The prototype is contained in `GrammarREPL.swift` and has four small conceptual
-layers:
+The executable is a thin entry point. Command decoding, session state, shared
+analysis, execution, and rendering live in the testable `GrammarREPLCore`
+library target:
 
 ```text
 terminal input
@@ -391,8 +402,8 @@ text renderer and retained REPLSession state
 argument, recognizes aliases, and constructs a typed command.
 
 Using a typed command instead of switching directly on strings keeps syntax
-handling separate from execution. It will also permit future unit tests to
-exercise command decoding without starting an interactive terminal.
+handling separate from execution. Unit tests exercise command decoding without
+starting an interactive terminal.
 
 An ordinary line becomes `.parse(line)`. A colon-prefixed line is decoded as a
 command. Unknown or incomplete commands become `.unknown`, allowing the REPL to
@@ -443,10 +454,10 @@ algorithm is quadratic in the number of alternatives for one nonterminal, which
 is appropriate for ordinary grammar sizes and makes every conflicting pair
 explicit.
 
-The current conflict value is private to the executable:
+LL conflict results are public values in the shared analysis API:
 
 ```swift
-struct LLConflict {
+public struct LLConflict {
     let nonterminal: NonTerminal
     let first: Production
     let second: Production
@@ -454,16 +465,15 @@ struct LLConflict {
 }
 ```
 
-As the ecosystem adopts shared structured diagnostics, this should migrate into
-the Grammar or Parser package as a public analysis result rather than remain a
-REPL-owned model.
+`GrammarAnalysis` publishes FIRST, FOLLOW, per-production PREDICT sets, and LL
+conflicts so command-line, test, and future graphical clients use one result.
 
 ### Parser execution
 
-The REPL does not wrap all parsers behind a new type-erased protocol. All three
-currently selected parser types already return `[ParseTree]` through
-`allSyntaxTrees(for:)`, so a small switch is sufficient and keeps the prototype
-transparent.
+The generalized parsers return `[ParseTree]` through `allSyntaxTrees(for:)`.
+Deterministic LR parsers return a shared `ParserOutcome` containing status,
+tree, diagnostics, and recovery edits, which the REPL adapts into its retained
+tree list.
 
 If deterministic parsers later return a single tree while generalized parsers
 return forests or multiple trees, the natural common boundary is a richer parse
@@ -495,9 +505,9 @@ construction errors, unknown nonterminals, and parser errors are printed as
 command failures, after which the next prompt is displayed. `:quit` is the only
 command that deliberately ends normal execution.
 
-The current implementation displays existing error descriptions. Structured,
-source-located diagnostics and recovery edits are future ecosystem work rather
-than something the REPL should invent independently.
+Generalized parsers still display their existing error descriptions. LR modes
+consume the shared structured diagnostics and explicit recovery edits published
+by LR-Parsing.
 
 ## Relationship to the three-service design
 
@@ -510,20 +520,17 @@ The intended mature architecture separates three reusable services:
 3. **Parser runtime** — recognition, syntax trees or forests, diagnostics,
    tracing, and recovery for sample input.
 
-The prototype already consumes the first and third concepts, although they are
-currently direct library calls rather than explicit service protocols. Parser
-generation is not yet represented because LR table and automaton details are
-not currently exposed as public structured results.
+The REPL consumes all three concepts: `GrammarAnalysis`, LR-Parsing's public
+`LRAutomaton`, and generalized or deterministic parser runtimes.
 
 The REPL should remain a client of these services. Conflict detection, recovery,
 and graph construction should not be implemented only inside the executable,
 because command-line tools, tests, IDE integrations, and graphical frontends
 will need the same information.
 
-## Adding LR exploration
+## LR exploration model
 
-Commands such as the following become practical when `LR-Parsing` exposes its
-generation artifacts:
+LR-Parsing exposes the generation artifact used by these commands:
 
 ```text
 :parser lalr
@@ -531,7 +538,6 @@ generation artifacts:
 :conflicts
 :explain 1
 :state 12
-:path 12
 ```
 
 The required public model should contain at least:
@@ -544,14 +550,12 @@ The required public model should contain at least:
 - the item or production that originated each action;
 - unresolved and precedence-resolved conflicts.
 
-With that model, `:state 12` is primarily a renderer. Without it, the REPL would
-have to duplicate table generation or parse diagnostic strings, both of which
-would undermine the architecture.
+With that model, `:state 12` is a renderer; the REPL does not duplicate table
+generation or parse diagnostic strings.
 
-## Adding error recovery
+## Error recovery
 
-Recovery should similarly be added to parser runtimes before it is added to the
-REPL. A future command might select a policy:
+Recovery lives in the LR runtime. The public API accepts these policies:
 
 ```text
 :recover off
