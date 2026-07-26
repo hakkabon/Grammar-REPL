@@ -67,6 +67,9 @@ The prototype currently supports:
 - inspecting generated LR states, transitions, ACTION/GOTO tables, conflicts,
   and shortest conflict witnesses;
 - structured parser outcomes and bounded local repair in deterministic LR modes;
+- ASCII railroad diagrams plus DOT renderers for LR automata, LR states, and
+  retained parse trees;
+- persistent interactive history and semantic tab completion;
 - parsing sample input without leaving the session;
 - retaining every derivation returned by the selected parser;
 - displaying a selected parse tree with source lexemes at its leaves;
@@ -76,9 +79,7 @@ The prototype does **not** yet implement:
 
 - LL(1) runtime parsing through the `LL-Parsing` package;
 - precedence-based conflict resolution;
-- parser tracing;
-- command history or completion;
-- graphical rendering.
+- parser tracing.
 
 These are planned extensions, not hidden or incomplete commands.
 
@@ -372,6 +373,40 @@ Parser: earley
 Last input: print 1 + 2 * 3;
 ```
 
+### `:diagram` and `:export`
+
+Graphical artifacts use reusable renderers in `GrammarREPLCore`:
+
+```text
+:diagram grammar
+:diagram rule expression
+:diagram automaton
+:diagram state 12
+:diagram tree
+
+:export automaton automaton.dot
+:export state:12 state-12.dot
+:export rule:expression expression.txt
+:export tree parse-tree.dot
+```
+
+Grammar and rule diagrams use the Grammar package's ASCII railroad renderer.
+Automata, individual LR states, and syntax trees use Graphviz DOT. Red borders
+identify LR states containing conflicts. Export writes the renderer's content
+without invoking an external viewer, so the library remains usable in tests and
+headless tools.
+
+### History and completion
+
+The macOS CLI uses the system libedit library. Up/down navigation recalls
+history, which is persisted in `~/.grammar-repl-history`; adjacent duplicate and
+blank commands are omitted. `:history` displays the current session history.
+
+Tab completion is driven by `GrammarREPLCore.CommandCompletion`: it completes
+command names, parser names, loaded nonterminals, generated LR state/conflict
+numbers, and diagram kinds. The terminal adapter only presents candidates and
+does not duplicate semantic command knowledge.
+
 ### `:help` and `:quit`
 
 `:help` (or `:?`) displays the concise command summary. `:quit`, `:exit`, and
@@ -590,19 +625,19 @@ distinguish clean acceptance from acceptance with recovery.
 
 ## Graphical artifact integration
 
-A graphical grammar module should consume the same structured artifacts that
-the text commands consume. Suitable future commands include:
+A graphical grammar module consumes the same structured artifacts that the text
+commands consume. The currently connected commands include:
 
 ```text
 :diagram grammar
 :diagram rule expression
 :diagram automaton
 :diagram state 12
-:diagram forest
-:export state 12 --format svg --output state-12.svg
+:diagram tree
+:export state:12 state-12.dot
 ```
 
-The preferred boundary is a renderer or exporter protocol:
+The boundary is the `GrammarArtifactRenderer` protocol:
 
 ```swift
 protocol GrammarArtifactRenderer {

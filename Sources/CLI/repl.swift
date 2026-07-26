@@ -9,5 +9,8 @@ struct GrammarRepl: ParsableCommand {
         version: "0.1.0"
     )
 
-    static func main() { GrammarREPL().run() }
+    static func main() {
+        let editor = LineEditor()
+        GrammarREPL(readCommand: editor.read).run()
+    }
 }

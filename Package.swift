@@ -19,6 +19,7 @@ let package = Package(
         .package(url: "https://github.com/hakkabon/CYK-Parser.git", branch: "main"),
         .package(url: "https://github.com/hakkabon/RNGLR-Parser.git", branch: "main"),
         .package(url: "https://github.com/hakkabon/LR-Parsing.git", branch: "main"),
+        .package(url: "https://github.com/hakkabon/GrammarDiagram.git", branch: "main"),
     ],
     targets: [
         .target(
@@ -30,6 +31,7 @@ let package = Package(
                 .product(name: "CYK-Parser", package: "CYK-Parser"),
                 .product(name: "RNGLR-Parser", package: "RNGLR-Parser"),
                 .product(name: "LR-Parsing", package: "LR-Parsing"),
+                .product(name: "GrammarDiagram", package: "GrammarDiagram"),
             ],
             path: "Sources/GrammarREPLCore"
         ),
@@ -37,13 +39,23 @@ let package = Package(
             name: "grammar-repl",
             dependencies: [
                 "GrammarREPLCore",
+                "CReadline",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
             path: "Sources/CLI"
         ),
+        .systemLibrary(
+            name: "CReadline",
+            path: "Sources/CReadline",
+            pkgConfig: "libedit"
+        ),
         .testTarget(
             name: "GrammarREPLCoreTests",
-            dependencies: ["GrammarREPLCore", .product(name: "Grammar", package: "Grammar")]
+            dependencies: [
+                "GrammarREPLCore",
+                .product(name: "Grammar", package: "Grammar"),
+                .product(name: "LR-Parsing", package: "LR-Parsing"),
+            ]
         ),
     ]
 )

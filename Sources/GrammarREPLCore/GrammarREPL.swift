@@ -8,15 +8,27 @@ import Earley_Parser
 
 public final class GrammarREPL {
     public private(set) var session = REPLSession()
+    public private(set) var history = CommandHistory()
     private let output: (String) -> Void
+    private let readCommand: (String, REPLSession) -> String?
 
-    public init(output: @escaping (String) -> Void = { print($0) }) { self.output = output }
+    public init(
+        output: @escaping (String) -> Void = { print($0) },
+        readCommand: @escaping (String, REPLSession) -> String? = { prompt, _ in
+            Swift.print(prompt, terminator: "")
+            return readLine()
+        }
+    ) {
+        self.output = output
+        self.readCommand = readCommand
+    }
 
     public func run() {
         output("Grammar REPL — type :help for commands")
         while true {
-            Swift.print("grammar> ", terminator: "")
-            guard let line = readLine(), execute(.decode(line)) else { break }
+            guard let line = readCommand("grammar> ", session) else { break }
+            history.append(line)
+            if !execute(.decode(line)) { break }
         }
     }
 
@@ -40,6 +52,10 @@ public final class GrammarREPL {
             case .parse(let input): try parseInput(input)
             case .tree(let index): try showTree(index)
             case .settings: showSettings()
+            case .history:
+                for (index, line) in history.entries.enumerated() { output("\(index + 1)  \(line)") }
+            case .diagram(let specification): output(try renderArtifact(specification).content)
+            case .export(let artifact, let path): try exportArtifact(artifact, to: path)
             case .unknown(let text): if !text.isEmpty { output("Unknown or incomplete command: \(text)\nType :help for usage.") }
             }
         } catch { output("Error: \(error)") }
@@ -175,6 +191,38 @@ public final class GrammarREPL {
         output("Grammar: \(session.loaded?.url.path ?? "none")\nParser: \(session.parser.rawValue)\nLast input: \(session.lastInput ?? "none")\nLR artifact: \(session.automaton.map { "\($0.states.count) states" } ?? "not generated")")
     }
 
+    private func renderArtifact(_ rawSpecification: String) throws -> RenderedArtifact {
+        let words = rawSpecification.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard let kind = words.first?.lowercased() else {
+            throw Message("Use :diagram grammar|rule <name>|automaton|state <number>|tree")
+        }
+        switch kind {
+        case "grammar": return try RailroadGrammarRenderer().render(grammar())
+        case "rule":
+            guard words.count == 2 else { throw Message("Use :diagram rule <name>") }
+            return try RailroadGrammarRenderer().render(rule: words[1], in: grammar())
+        case "automaton": return try LRAutomatonDOTRenderer().render(automaton())
+        case "state":
+            guard words.count == 2, let id = Int(words[1]) else { throw Message("Use :diagram state <number>") }
+            return try LRAutomatonDOTRenderer(selectedState: id).render(automaton())
+        case "tree":
+            guard let tree = session.lastTrees.first, let source = session.lastInput else { throw ArtifactRenderingError.unavailable("No successful parse tree is available.") }
+            return try SyntaxTreeDOTRenderer().render((tree, source))
+        default:
+            // Compact export spelling: rule:name or state:number.
+            if kind.hasPrefix("rule:") { return try RailroadGrammarRenderer().render(rule: String(kind.dropFirst(5)), in: grammar()) }
+            if kind.hasPrefix("state:"), let id = Int(kind.dropFirst(6)) { return try LRAutomatonDOTRenderer(selectedState: id).render(automaton()) }
+            throw Message("Unknown graphical artifact: \(kind)")
+        }
+    }
+
+    private func exportArtifact(_ specification: String, to path: String) throws {
+        let artifact = try renderArtifact(specification)
+        let url = URL(fileURLWithPath: path).standardizedFileURL
+        try artifact.content.write(to: url, atomically: true, encoding: .utf8)
+        output("Exported \(artifact.format.rawValue) to \(url.path).")
+    }
+
     private func grammar() throws -> Grammar {
         guard let value = session.loaded?.grammar else { throw Message("No grammar is loaded. Use :load <file> [start].") }
         return value
@@ -223,6 +271,9 @@ public final class GrammarREPL {
       :first/:follow/:predict <nonterminal>
       :parse <input>         Parse; LR modes use bounded local repair
       :tree [number]         Show the last parse tree
+      :diagram <artifact>    Render grammar/rule/automaton/state/tree
+      :export <kind> <path>  Export (use rule:name or state:number)
+      :history               Show this session's command history
       :reload / :grammar / :settings / :help / :quit
     """
 }
