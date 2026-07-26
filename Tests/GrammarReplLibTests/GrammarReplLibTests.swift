@@ -1,11 +1,8 @@
 import Testing
 import Foundation
 import Grammar
+import LR_Parsing
 @testable import GrammarReplLib
-//=======
-//import LR_Parsing
-//@testable import GrammarREPLCore
-//>>>>>>> dev-branch:Tests/GrammarREPLCoreTests/GrammarREPLCoreTests.swift
 
 @Suite("Command decoding")
 struct CommandTests {

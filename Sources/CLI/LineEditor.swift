@@ -1,8 +1,16 @@
+//
+//  LineEditor.swift
+//  Grammar-REPL
+//
+//  Created by Ulf Akerstedt-Inoue on 2026/07/66.
+//  Copyright © 2026 hakkabon software. All rights reserved.
+//
+
 #if os(macOS)
 import Foundation
 import Darwin
 @preconcurrency import CReadline
-import GrammarREPLCore
+import GrammarReplLib
 
 final class LineEditor {
     private let historyPath: String
