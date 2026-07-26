@@ -1,0 +1,5 @@
+module CReadline [system] {
+    header "shim.h"
+    link "edit"
+    export *
+}

@@ -26,11 +26,12 @@ public enum REPLParser: String, CaseIterable, Equatable {
 public enum REPLNotation: String, CaseIterable { case bnf, ebnf, wsn, gen }
 
 public enum REPLCommand: Equatable {
-    case help, quit, reload, grammar, check, conflicts, settings
+    case help, quit, reload, grammar, check, conflicts, settings, history
     case load(path: String, start: String?)
     case parser(REPLParser?)
     case first(String), follow(String), predict(String), parse(String)
     case tree(Int?), state(Int?), explain(Int?)
+    case diagram(String), export(artifact: String, path: String)
     case unknown(String)
 
     public static func decode(_ line: String) -> REPLCommand {
@@ -60,6 +61,11 @@ public enum REPLCommand: Equatable {
         case "state": return .state(argument.isEmpty ? nil : Int(argument))
         case "explain": return .explain(argument.isEmpty ? nil : Int(argument))
         case "settings": return .settings
+        case "history": return .history
+        case "diagram": return .diagram(argument)
+        case "export":
+            let words = shellWords(argument)
+            return words.count == 2 ? .export(artifact: words[0], path: words[1]) : .unknown(text)
         default: return .unknown(text)
         }
     }
