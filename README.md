@@ -1,0 +1,688 @@
+# Grammar REPL
+
+`grammar-repl` is a small, terminal-first workbench for exploring context-free
+grammars and the parsers generated from them. It turns the Grammar and Parser
+packages from a collection of library APIs into an interactive environment in
+which a grammar author can ask questions, try input, inspect results, modify the
+grammar, and immediately try again.
+
+The REPL is deliberately modest. It is not an editor, a compiler frontend, or a
+full-screen terminal application. It is an interactive client of the existing
+grammar-analysis and generalized-parser facilities. This makes the first version
+useful without duplicating those facilities, and provides a foundation for later
+LR conflict inspection, error recovery experiments, tracing, and graphical
+grammar artifacts.
+
+## Why a grammar REPL?
+
+Parser generators are often experienced as black boxes. A grammar goes in and a
+parser comes out, but questions that arise during grammar development can be hard
+to answer:
+
+- What can begin this nonterminal?
+- What can legally follow it?
+- Which production will an LL(1) parser choose for this lookahead?
+- Why is the grammar not LL(1)?
+- Does the grammar accept this particular sentence?
+- Do different parsing algorithms produce the same result?
+- Is an accepted sentence ambiguous?
+- What does the resulting concrete syntax tree look like?
+
+The REPL makes these questions part of a short edit–reload–inspect–parse loop:
+
+```text
+edit grammar
+    ↓
+:reload
+    ↓
+:check / :first / :follow / :predict
+    ↓
+:parse sample input
+    ↓
+:tree
+```
+
+The long-term goal is a grammar laboratory in which deterministic and
+generalized parsing algorithms can be compared through a common interaction
+model. The present implementation establishes that interaction model using the
+public APIs already available in the repository's dependencies.
+
+## Current capabilities
+
+The prototype currently supports:
+
+- loading `.bnf`, `.ebnf`, `.wsn`, and `.gen` grammar files;
+- reloading the active grammar after it is edited;
+- displaying the normalized grammar;
+- displaying FIRST and FOLLOW sets;
+- calculating and displaying PREDICT sets for individual productions;
+- detecting pairwise LL(1) PREDICT-set conflicts;
+- selecting Earley, CYK, or RNGLR as the runtime parser;
+- parsing sample input without leaving the session;
+- retaining every derivation returned by the selected parser;
+- displaying a selected parse tree with source lexemes at its leaves;
+- showing the current session settings.
+
+The prototype does **not** yet implement:
+
+- LL(1) runtime parsing through the `LL-Parsing` package;
+- LR(0), SLR, LALR, or canonical LR(1) runtime parsing;
+- LR state, ACTION, or GOTO inspection;
+- shift/reduce or reduce/reduce conflict reports;
+- conflict witnesses or precedence-based conflict resolution;
+- panic-mode or local-repair error recovery;
+- parser tracing;
+- command history or completion;
+- graphical rendering.
+
+These are planned extensions, not hidden or incomplete commands.
+
+## Building and running
+
+From the repository root:
+
+```sh
+swift build --product grammar-repl
+swift run grammar-repl
+```
+
+The REPL starts with an empty session:
+
+```text
+Grammar REPL — type :help for commands
+grammar>
+```
+
+Commands begin with a colon. A nonempty line without a colon is interpreted as
+sample input and is equivalent to `:parse <line>`.
+
+Exit with `:quit`, `:exit`, `:q`, or end-of-file (`Control-D` in a typical
+terminal).
+
+## Quick tour
+
+The repository includes a small arithmetic grammar. Because BNF files do not
+carry their own start declaration, give the start nonterminal after the path:
+
+```text
+grammar> :load Examples/arithmetic.bnf program
+Loaded arithmetic.bnf: 20 productions, start <program>.
+```
+
+Inspect its LL(1) properties:
+
+```text
+grammar> :first expression
+FIRST(<expression>) = {"(", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
+
+grammar> :follow expression
+FOLLOW(<expression>) = {")", "+", "-", ";"}
+
+grammar> :predict expression
+[1] expression --> expression "+" term
+    PREDICT = {"(", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
+[2] expression --> expression "-" term
+    PREDICT = {"(", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
+[3] expression --> term
+    PREDICT = {"(", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
+```
+
+The alternatives have overlapping prediction sets, so the grammar is not
+LL(1):
+
+```text
+grammar> :check
+Grammar: 20 productions, 6 nonterminals, 18 terminals.
+Found 6 LL(1) prediction conflicts:
+[1] <expression> on {"(", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
+    expression --> expression "+" term
+    expression --> expression "-" term
+...
+Selected runtime parser: earley.
+```
+
+This does not mean the grammar is invalid. It means that one token of lookahead
+cannot uniquely select an alternative. A generalized parser can still parse it:
+
+```text
+grammar> :parser earley
+Parser set to earley.
+
+grammar> :parse print 1 + 2 * 3;
+Accepted by earley: 1 derivation.
+
+grammar> :tree
+program
+└── statement
+    ├── "print"
+    ├── expression
+    ...
+    └── ";"
+```
+
+Edit `Examples/arithmetic.bnf` in another window, then reload it without
+re-entering its path or start symbol:
+
+```text
+grammar> :reload
+Loaded arithmetic.bnf: 20 productions, start <program>.
+```
+
+## Command reference
+
+### `:load <file> [start]`
+
+Loads a grammar and replaces the active session grammar.
+
+```text
+:load Examples/arithmetic.bnf program
+:load Examples/language.gen
+:load "/path/containing spaces/language.ebnf" program
+```
+
+The notation is inferred from the filename extension:
+
+| Extension | Grammar initializer | Start argument |
+|---|---|---|
+| `.bnf` | `Grammar(bnf:start:)` | required |
+| `.ebnf` | `Grammar(ebnf:start:)` | required |
+| `.wsn` | `Grammar(wsn:start:)` | required |
+| `.gen` | `Grammar(gen:)` | read from the grammar |
+
+Loading a grammar clears the previous input and parse trees. This prevents a
+tree produced by an old grammar from being presented as a result of the newly
+loaded one.
+
+Paths may be enclosed in single or double quotes. The prototype intentionally
+implements only the quoting needed for paths; it is not a complete shell
+language and does not perform environment-variable, wildcard, or escape
+expansion.
+
+### `:reload`
+
+Reloads the current grammar from its original path with the same notation and
+start symbol. A successful reload clears the last input and parse trees.
+
+This command is the center of the intended workflow: edit the grammar in an
+editor, return to the REPL, and run `:reload` followed by the desired analysis
+or sample parse.
+
+### `:grammar`
+
+Displays the loaded `Grammar` value. This is the normalized grammar consumed by
+the parser packages and can differ structurally from the original EBNF or WSN
+source after notation lowering.
+
+### `:parser [earley|cyk|rnglr]`
+
+With no valid argument, displays the current parser and available choices:
+
+```text
+grammar> :parser
+Parser: earley. Available: earley, cyk, rnglr.
+```
+
+With an argument, selects the parser used by subsequent `:parse` commands:
+
+```text
+grammar> :parser rnglr
+Parser set to rnglr.
+```
+
+Changing the parser clears retained trees because they were produced by a
+different parsing algorithm. It retains the grammar and last input.
+
+The selected algorithms are generalized parsers. Consequently, an LL(1)
+conflict reported by `:check` does not prevent `:parse` from succeeding.
+
+### `:check`
+
+Displays a compact grammar summary and checks whether the alternatives of every
+nonterminal have disjoint PREDICT sets.
+
+For every pair of productions `A → α` and `A → β`, the command calculates:
+
+```text
+PREDICT(A → α) ∩ PREDICT(A → β)
+```
+
+An empty intersection means those two alternatives can be distinguished with
+one token of lookahead. A nonempty intersection is reported as an LL(1)
+conflict, including the nonterminal, overlapping lookaheads, and both
+productions.
+
+At present, `:check` is an LL(1) analysis plus a grammar summary. It does not
+generate an LR table and does not diagnose LR conflicts.
+
+### `:first <nonterminal>`
+
+Displays the terminals that may begin a string derived from the named
+nonterminal:
+
+```text
+:first expression
+:first <expression>
+```
+
+Angle brackets are optional. Nonterminal lookup uses the exact name after
+trimming angle brackets and surrounding spaces.
+
+### `:follow <nonterminal>`
+
+Displays terminals that may occur immediately after the named nonterminal in a
+sentential form. The grammar end-of-input marker is included where appropriate.
+
+### `:predict <nonterminal>`
+
+Displays every production for the nonterminal and the lookaheads on which an
+LL(1) parser would select it.
+
+For `A → α`, the REPL calculates:
+
+```text
+PREDICT(A → α) = FIRST(α) − {ε}
+```
+
+If `α` is nullable, it additionally includes `FOLLOW(A)`:
+
+```text
+PREDICT(A → α) = (FIRST(α) − {ε}) ∪ FOLLOW(A)
+```
+
+The implementation uses `Grammar.firstAndFollow()` and
+`Grammar.first(of:using:)`; it does not maintain a second independent FIRST or
+FOLLOW implementation.
+
+### `:parse <input>`
+
+Runs the selected parser against sample input and retains all returned parse
+trees:
+
+```text
+:parse print 1 + 2 * 3;
+:parse "print 1 + 2 * 3;"
+```
+
+The outer matching quotes in the second form are command delimiters and are not
+part of the sample input. A plain line is more convenient for most input:
+
+```text
+grammar> print 1 + 2 * 3;
+Accepted by earley: 1 derivation.
+```
+
+On success, the REPL reports the number of derivations. On failure, the parser's
+current error description is displayed and the session remains active.
+
+The runtime dispatch is direct:
+
+```swift
+switch selectedParser {
+case .earley:
+    EarleyParser(grammar: grammar).allSyntaxTrees(for: input)
+case .cyk:
+    CYKParser(grammar: grammar).allSyntaxTrees(for: input)
+case .rnglr:
+    RNGLRParser(grammar: grammar).allSyntaxTrees(for: input)
+}
+```
+
+This is intentionally a thin adapter. Tokenization, recognition, forest
+construction, and tree enumeration remain responsibilities of their respective
+packages.
+
+### `:tree [number]`
+
+Displays a parse tree retained by the most recent successful `:parse`. Tree
+numbers are one-based:
+
+```text
+:tree       # first derivation
+:tree 1     # first derivation
+:tree 2     # second derivation
+```
+
+The shared `ParseTree` stores leaf ranges into the original input. The REPL's
+tree renderer resolves each range back to its source lexeme, so a leaf is shown
+as `"print"` rather than as an internal `String.Index` range.
+
+### `:settings`
+
+Displays the active grammar path, selected parser, and last input:
+
+```text
+Grammar: /absolute/path/to/arithmetic.bnf
+Parser: earley
+Last input: print 1 + 2 * 3;
+```
+
+### `:help` and `:quit`
+
+`:help` (or `:?`) displays the concise command summary. `:quit`, `:exit`, and
+`:q` end the session.
+
+## Architecture and inner workings
+
+The prototype is contained in `GrammarREPL.swift` and has four small conceptual
+layers:
+
+```text
+terminal input
+    ↓
+REPLCommand.decode
+    ↓
+GrammarREPL.execute
+    ↓
+Grammar analysis or parser package
+    ↓
+text renderer and retained REPLSession state
+```
+
+### Command decoding
+
+`REPLCommand` is an enum containing one case for every supported operation.
+`REPLCommand.decode(_:)` trims the input, separates the command name from its
+argument, recognizes aliases, and constructs a typed command.
+
+Using a typed command instead of switching directly on strings keeps syntax
+handling separate from execution. It will also permit future unit tests to
+exercise command decoding without starting an interactive terminal.
+
+An ordinary line becomes `.parse(line)`. A colon-prefixed line is decoded as a
+command. Unknown or incomplete commands become `.unknown`, allowing the REPL to
+report the problem without terminating.
+
+### Session state
+
+`REPLSession` retains only the state needed between commands:
+
+```swift
+struct REPLSession {
+    var loaded: LoadedGrammar?
+    var parser: REPLParser = .earley
+    var lastInput: String?
+    var lastTrees: [ParseTree] = []
+}
+```
+
+`LoadedGrammar` retains:
+
+- the standardized absolute file URL;
+- inferred notation;
+- optional explicit start name;
+- the parsed `Grammar` value.
+
+Retaining the loading parameters makes `:reload` deterministic. Retaining the
+input together with its trees lets `:tree` resolve leaf ranges back into
+lexemes.
+
+The session follows simple invalidation rules:
+
+| Operation | Grammar | Last input | Last trees |
+|---|---:|---:|---:|
+| load/reload | replaced | cleared | cleared |
+| parser selection | retained | retained | cleared |
+| successful parse | retained | replaced | replaced |
+| analysis command | retained | retained | retained |
+
+### Grammar analysis
+
+FIRST and FOLLOW sets come directly from `Grammar.firstAndFollow()`. PREDICT
+sets are calculated locally because they combine the FIRST set of a production
+sequence with FOLLOW information for nullable alternatives.
+
+LL(1) conflict detection groups productions by goal nonterminal, compares every
+pair of alternatives, and records nonempty PREDICT-set intersections. The
+algorithm is quadratic in the number of alternatives for one nonterminal, which
+is appropriate for ordinary grammar sizes and makes every conflicting pair
+explicit.
+
+The current conflict value is private to the executable:
+
+```swift
+struct LLConflict {
+    let nonterminal: NonTerminal
+    let first: Production
+    let second: Production
+    let lookaheads: Set<Symbol>
+}
+```
+
+As the ecosystem adopts shared structured diagnostics, this should migrate into
+the Grammar or Parser package as a public analysis result rather than remain a
+REPL-owned model.
+
+### Parser execution
+
+The REPL does not wrap all parsers behind a new type-erased protocol. All three
+currently selected parser types already return `[ParseTree]` through
+`allSyntaxTrees(for:)`, so a small switch is sufficient and keeps the prototype
+transparent.
+
+If deterministic parsers later return a single tree while generalized parsers
+return forests or multiple trees, the natural common boundary is a richer parse
+outcome rather than forced type erasure:
+
+```swift
+struct ParserOutcome {
+    let status: ParseStatus
+    let trees: [ParseTree]
+    let diagnostics: [ParserDiagnostic]
+    let recoveryEdits: [RecoveryEdit]
+}
+```
+
+### Tree rendering
+
+`ParseTree` leaves contain `Range<String.Index>` values. `renderTree(_:in:)`
+walks the tree recursively and slices the retained input for every leaf. It
+renders nonterminals as branches and lexemes as quoted leaves.
+
+Rendering is intentionally REPL-owned presentation logic. It does not modify
+the shared tree representation and therefore does not affect compiler adapters
+or parser packages.
+
+### Error containment
+
+Each command is executed inside one `do`/`catch` boundary. File errors, grammar
+construction errors, unknown nonterminals, and parser errors are printed as
+command failures, after which the next prompt is displayed. `:quit` is the only
+command that deliberately ends normal execution.
+
+The current implementation displays existing error descriptions. Structured,
+source-located diagnostics and recovery edits are future ecosystem work rather
+than something the REPL should invent independently.
+
+## Relationship to the three-service design
+
+The intended mature architecture separates three reusable services:
+
+1. **Grammar analysis** — nullable, FIRST, FOLLOW, PREDICT, hygiene, recursion,
+   factoring, and LL conflicts.
+2. **Parser generation** — LL/LR tables, LR automata, states, transitions,
+   action origins, and grammar conflicts for a selected deterministic algorithm.
+3. **Parser runtime** — recognition, syntax trees or forests, diagnostics,
+   tracing, and recovery for sample input.
+
+The prototype already consumes the first and third concepts, although they are
+currently direct library calls rather than explicit service protocols. Parser
+generation is not yet represented because LR table and automaton details are
+not currently exposed as public structured results.
+
+The REPL should remain a client of these services. Conflict detection, recovery,
+and graph construction should not be implemented only inside the executable,
+because command-line tools, tests, IDE integrations, and graphical frontends
+will need the same information.
+
+## Adding LR exploration
+
+Commands such as the following become practical when `LR-Parsing` exposes its
+generation artifacts:
+
+```text
+:parser lalr
+:check
+:conflicts
+:explain 1
+:state 12
+:path 12
+```
+
+The required public model should contain at least:
+
+- stable state identifiers for one generated automaton;
+- LR items and lookahead sets in every state;
+- terminal and nonterminal transitions;
+- ACTION and GOTO table entries;
+- every candidate action before conflict resolution;
+- the item or production that originated each action;
+- unresolved and precedence-resolved conflicts.
+
+With that model, `:state 12` is primarily a renderer. Without it, the REPL would
+have to duplicate table generation or parse diagnostic strings, both of which
+would undermine the architecture.
+
+## Adding error recovery
+
+Recovery should similarly be added to parser runtimes before it is added to the
+REPL. A future command might select a policy:
+
+```text
+:recover off
+:recover panic
+:recover repair
+```
+
+The parser outcome should then expose explicit edits:
+
+```swift
+enum RecoveryEdit {
+    case insert(terminal: Terminal, at: SourcePosition)
+    case delete(token: TokenDescription)
+    case replace(token: TokenDescription, with: Terminal)
+    case skip(range: SourceSpan, until: Terminal)
+}
+```
+
+The REPL could render them inline:
+
+```text
+Original:
+  if (x > 3 { print x; }
+
+Recovered:
+  if (x > 3 ⟦+)⟧ { print x; }
+```
+
+The notation means the closing parenthesis was synthesized; the input itself
+was not silently changed. Recovery must always retain an error diagnostic and
+distinguish clean acceptance from acceptance with recovery.
+
+## Graphical artifact integration
+
+A graphical grammar module should consume the same structured artifacts that
+the text commands consume. Suitable future commands include:
+
+```text
+:diagram grammar
+:diagram rule expression
+:diagram automaton
+:diagram state 12
+:diagram forest
+:export state 12 --format svg --output state-12.svg
+```
+
+The preferred boundary is a renderer or exporter protocol:
+
+```swift
+protocol GrammarArtifactRenderer {
+    associatedtype Artifact
+    func render(
+        _ artifact: Artifact,
+        context: RenderingContext
+    ) throws -> RenderedOutput
+}
+```
+
+The grammar, LR automaton, conflict, parse forest, or syntax tree remains the
+source of truth. The graphical module should not reconstruct semantic
+information from the REPL's formatted text.
+
+This separation also permits several outputs from one session artifact:
+
+- concise terminal text;
+- verbose diagnostic text;
+- Graphviz or SVG;
+- JSON for tooling;
+- an in-app interactive visualization.
+
+## Design principles
+
+The prototype follows several principles intended to survive later expansion:
+
+1. **The session owns interaction state, not parser semantics.**
+2. **Library packages remain responsible for analysis and parsing.**
+3. **Commands operate on structured values rather than each other's output.**
+4. **A grammar edit invalidates results derived from the old grammar.**
+5. **A parser change invalidates trees produced by the old parser.**
+6. **Generalized ambiguity is preserved as multiple derivations.**
+7. **Internal source ranges are rendered as source text for human inspection.**
+8. **Missing advanced features are explicit rather than simulated by fragile
+   text processing.**
+
+## Testing and verification
+
+Build only the REPL:
+
+```sh
+swift build --product grammar-repl
+```
+
+Run the repository's complete tests:
+
+```sh
+swift test
+```
+
+A useful manual smoke-test sequence is:
+
+```text
+:load Examples/arithmetic.bnf program
+:check
+:first expression
+:follow expression
+:predict expression
+:parser earley
+:parse print 1 + 2 * 3;
+:tree
+:settings
+:quit
+```
+
+Expected properties:
+
+- the grammar loads with `program` as its start symbol;
+- `:check` reports LL(1) conflicts caused by left recursion;
+- FIRST, FOLLOW, and PREDICT output is deterministic in display order;
+- Earley accepts the sample;
+- one derivation is retained;
+- tree leaves display source lexemes rather than index ranges;
+- the process exits normally.
+
+## Suggested development sequence
+
+The next useful increments are:
+
+1. extract command/session code into a testable library target;
+2. add unit tests for command decoding, state invalidation, and LL conflicts;
+3. move LL conflict results into a shared structured analysis API;
+4. expose LR generation artifacts and add `:conflicts`, `:state`, and
+   `:explain`;
+5. add shortest conflict witnesses;
+6. introduce shared parser outcomes and diagnostics;
+7. add panic-mode recovery, then bounded local repair;
+8. connect graphical artifact renderers;
+9. add history and completion only after the semantic commands stabilize.
+
+Keeping this order ensures that the REPL grows by presenting reusable ecosystem
+capabilities rather than becoming a second implementation of them.
