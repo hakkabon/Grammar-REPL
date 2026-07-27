@@ -64,6 +64,8 @@ public final class GrammarREPL {
                 for (index, line) in history.entries.enumerated() { output("\(index + 1)  \(line)") }
             case .diagram(let specification): output(try renderArtifact(specification).content)
             case .export(let artifact, let path): try exportArtifact(artifact, to: path)
+            case .trace(let argument): showTrace(argument)
+            case .identity(let specification): try showIdentity(specification)
             case .unknown(let text): if !text.isEmpty { output("Unknown or incomplete command: \(text)\nType :help for usage.") }
             }
         } catch { output("Error: \(error)") }
@@ -178,7 +180,8 @@ public final class GrammarREPL {
         case .rnglr: trees = try RNGLRParser(grammar: grammar).allSyntaxTrees(for: input)
         case .lr0, .slr, .lalr, .lr1:
             guard let algorithm = session.parser.lrAlgorithm else { throw Message("Missing LR algorithm.") }
-            let outcome = try LRParser(grammar: grammar, algorithm: algorithm).parseOutcome(input, recovery: .localRepair(maxEdits: 2))
+            let outcome = try LRParser(grammar: grammar, algorithm: algorithm).parseOutcome(input, recovery: .localRepair(maxEdits: 2), tracing: session.traceEnabled)
+            session.storeTrace(outcome.trace)
             for diagnostic in outcome.diagnostics { output(diagnostic.description) }
             for edit in outcome.recoveryEdits { output("Recovery: \(edit)") }
             trees = outcome.tree.map { [$0] } ?? []
@@ -196,7 +199,43 @@ public final class GrammarREPL {
     }
 
     private func showSettings() {
-        output("Grammar: \(session.loaded?.url.path ?? "none")\nParser: \(session.parser.rawValue)\nLast input: \(session.lastInput ?? "none")\nLR artifact: \(session.automaton.map { "\($0.states.count) states" } ?? "not generated")")
+        output("Grammar: \(session.loaded?.url.path ?? "none")\nParser: \(session.parser.rawValue)\nLast input: \(session.lastInput ?? "none")\nLR artifact: \(session.automaton.map { "\($0.states.count) states" } ?? "not generated")\nTracing: \(session.traceEnabled ? "on" : "off")")
+    }
+
+    private func showTrace(_ rawArgument: String?) {
+        switch rawArgument?.lowercased() {
+        case "on": session.setTraceEnabled(true); output("LR parser tracing enabled.")
+        case "off": session.setTraceEnabled(false); output("LR parser tracing disabled.")
+        case "clear": session.clearTrace(); output("Parser trace cleared.")
+        case let value?:
+            guard let limit = Int(value), limit > 0 else { output("Use :trace [on|off|clear|count]."); return }
+            renderTrace(Array(session.lastTrace.suffix(limit)))
+        case nil: renderTrace(session.lastTrace)
+        }
+    }
+
+    private func renderTrace(_ events: [LRParserTraceEvent]) {
+        guard !events.isEmpty else { output("No LR parser trace is available. Enable tracing and parse input first."); return }
+        for event in events { output(event.description) }
+    }
+
+    private func showIdentity(_ rawSpecification: String) throws {
+        let words = rawSpecification.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard words.count == 2, let index = Int(words[1]) else { throw Message("Use :identity state|conflict|production <number>.") }
+        let artifact = try automaton()
+        switch words[0].lowercased() {
+        case "state":
+            guard let value = artifact.state(index) else { throw Message("Unknown LR state \(index).") }
+            output(value.identity.rawValue)
+        case "conflict":
+            guard index > 0, artifact.conflicts.indices.contains(index - 1) else { throw Message("Unknown one-based conflict \(index).") }
+            output(artifact.conflicts[index - 1].identity.rawValue)
+        case "production":
+            guard index > 0, artifact.productions.indices.contains(index - 1) else { throw Message("Unknown one-based production \(index).") }
+            let value = artifact.productions[index - 1]
+            output("\(value.identity.rawValue)\n\(value.production)")
+        default: throw Message("Use :identity state|conflict|production <number>.")
+        }
     }
 
     private func renderArtifact(_ rawSpecification: String) throws -> RenderedArtifact {
@@ -279,6 +318,8 @@ public final class GrammarREPL {
       :first/:follow/:predict <nonterminal>
       :parse <input>         Parse; LR modes use bounded local repair
       :tree [number]         Show the last parse tree
+      :trace [option]        Enable/disable/show/clear LR runtime tracing
+      :identity <kind> <n>   Show a stable state/conflict/production ID
       :diagram <artifact>    Render grammar/rule/automaton/state/tree
       :export <kind> <path>  Export (use rule:name or state:number)
       :history               Show this session's command history

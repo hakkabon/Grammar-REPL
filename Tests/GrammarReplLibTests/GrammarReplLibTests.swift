@@ -13,6 +13,9 @@ struct CommandTests {
         #expect(REPLCommand.decode(":parser lalr") == .parser(.lalr))
         #expect(REPLCommand.decode(":diagram state 3") == .diagram("state 3"))
         #expect(REPLCommand.decode(":export state:3 out.dot") == .export(artifact: "state:3", path: "out.dot"))
+        #expect(REPLCommand.decode(":trace on") == .trace("on"))
+        #expect(REPLCommand.decode(":trace") == .trace(nil))
+        #expect(REPLCommand.decode(":identity state 4") == .identity("state 4"))
     }
 
     @Test func decodesQuotedLoadAndPlainInput() {
@@ -39,6 +42,31 @@ struct InteractiveTests {
         #expect(CommandCompletion.candidates(for: ":conf", session: session) == [":conflicts"])
         #expect(CommandCompletion.candidates(for: ":parser la", session: session) == ["lalr"])
         #expect(CommandCompletion.candidates(for: ":first v", session: session) == ["value"])
+        #expect(CommandCompletion.candidates(for: ":trace o", session: session) == ["off", "on"])
+    }
+}
+
+@Suite("REPL parser tracing")
+struct REPLTracingTests {
+    @Test func traceCommandsControlSessionWithoutParsing() {
+        var output: [String] = []
+        let repl = GrammarREPL(output: { output.append($0) })
+        repl.execute(.trace("on"))
+        #expect(repl.session.traceEnabled)
+        repl.execute(.trace(nil))
+        #expect(output.last?.contains("No LR parser trace") == true)
+        repl.execute(.trace("off"))
+        #expect(!repl.session.traceEnabled)
+    }
+
+    @Test func parserChangeInvalidatesStoredTrace() throws {
+        var session = REPLSession()
+        let grammar = try Grammar(bnf: "<S> ::= \"a\"", start: "S")
+        let trace = try LRParser(grammar: grammar, algorithm: .lalr).parseOutcome("a", tracing: true).trace
+        session.storeTrace(trace)
+        #expect(!session.lastTrace.isEmpty)
+        session.selectParser(.lalr)
+        #expect(session.lastTrace.isEmpty)
     }
 }
 

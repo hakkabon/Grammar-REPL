@@ -25,6 +25,8 @@ public struct REPLSession {
     public private(set) var lastTrees: [ParseTree] = []
     public private(set) var analysis: GrammarAnalysis?
     public private(set) var automaton: LRAutomaton?
+    public private(set) var traceEnabled = false
+    public private(set) var lastTrace: [LRParserTraceEvent] = []
 
     public init() {}
 
@@ -39,6 +41,7 @@ public struct REPLSession {
         parser = value
         lastTrees = []
         automaton = nil
+        lastTrace = []
     }
 
     public mutating func storeParse(input: String, trees: [ParseTree]) {
@@ -47,10 +50,14 @@ public struct REPLSession {
     }
 
     public mutating func storeAutomaton(_ value: LRAutomaton) { automaton = value }
+    public mutating func setTraceEnabled(_ value: Bool) { traceEnabled = value }
+    public mutating func storeTrace(_ value: [LRParserTraceEvent]) { lastTrace = value }
+    public mutating func clearTrace() { lastTrace = [] }
 
     private mutating func invalidateDerivedState(clearInput: Bool) {
         if clearInput { lastInput = nil }
         lastTrees = []
         automaton = nil
+        lastTrace = []
     }
 }
