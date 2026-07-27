@@ -70,6 +70,10 @@ The prototype currently supports:
 - ASCII railroad diagrams plus DOT renderers for LR automata, LR states, and
   retained parse trees;
 - persistent interactive history and semantic tab completion;
+- stable semantic identities for LR productions, items, states, transitions,
+  and conflicts;
+- opt-in structured LR parser tracing with shift, reduce, error, recovery, and
+  acceptance events;
 - parsing sample input without leaving the session;
 - retaining every derivation returned by the selected parser;
 - displaying a selected parse tree with source lexemes at its leaves;
@@ -78,8 +82,7 @@ The prototype currently supports:
 The prototype does **not** yet implement:
 
 - LL(1) runtime parsing through the `LL-Parsing` package;
-- precedence-based conflict resolution;
-- parser tracing.
+- precedence-based conflict resolution.
 
 These are planned extensions, not hidden or incomplete commands.
 
@@ -372,6 +375,37 @@ Grammar: /absolute/path/to/arithmetic.bnf
 Parser: earley
 Last input: print 1 + 2 * 3;
 ```
+
+### `:trace` and `:identity`
+
+LR runtime tracing is opt-in and retained with the last LR parse:
+
+```text
+:parser lalr
+:trace on
+:parse id + id
+:trace          # show the complete retained trace
+:trace 10       # show the last ten events
+:trace clear
+:trace off
+```
+
+Trace events contain the token position, lookahead, stack snapshot, numeric
+state index, stable state identity, target state, and reduction production
+identity where applicable. Errors and recovery edits appear in the same event
+stream.
+
+Artifact identities can be inspected directly:
+
+```text
+:identity state 12
+:identity conflict 1
+:identity production 3
+```
+
+IDs use canonical semantic strings instead of Swift's randomized hashing.
+Generation also traverses symbols and actions canonically, keeping numeric state
+indices deterministic for an unchanged grammar and algorithm.
 
 ### `:diagram` and `:export`
 
