@@ -70,6 +70,30 @@ struct REPLTracingTests {
     }
 }
 
+@Suite("Conflict explanations")
+struct ConflictExplanationTests {
+    @Test func explanationRendersStructuredActionOrigins() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grammar-repl-conflict-\(UUID().uuidString).bnf")
+        try "<E> ::= <E> \"+\" <E> | \"id\"".write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        var output: [String] = []
+        let repl = GrammarREPL(output: { output.append($0) })
+        repl.execute(.load(path: url.path, start: "E"))
+        repl.execute(.parser(.lalr))
+        repl.execute(.explain(1))
+
+        let text = output.joined(separator: "\n")
+        #expect(text.contains("Competing action origins:"))
+        #expect(text.contains("Why:"))
+        #expect(text.contains("Origin item:"))
+        #expect(text.contains("shift to state"))
+        #expect(text.contains("reduce by"))
+        #expect(text.contains("Candidate ID:"))
+    }
+}
+
 @Suite("Graphical artifact renderers")
 struct ArtifactRendererTests {
     @Test func railroadRendererUsesLoadedGrammarSyntax() throws {

@@ -268,8 +268,19 @@ and reports state and LR-conflict counts.
 `:conflicts` lists shared structured LL conflicts in generalized-parser modes,
 or LR shift/reduce and reduce/reduce conflicts in LR modes. `:state N` renders
 the items and outgoing transitions of state `N`. `:explain N` shows the
-one-based LR conflict `N`, the conflicting actions, its state items, and a
-shortest terminal witness reaching the conflict lookahead.
+one-based LR conflict `N`, its stable identity, and the shortest terminal
+witness reaching the conflict lookahead. Each competing candidate then shows:
+
+- the proposed shift, reduction, or accept action;
+- why the generator proposed it (terminal transition, LR(0), SLR/FOLLOW,
+  LR(1)/LALR item lookahead, or augmented start);
+- the exact originating LR item;
+- stable item and candidate identities;
+- the complete conflicting state as context.
+
+The artifact retains origins for every ACTION cell, including multiple items
+that independently justify the same selected action. Only distinct competing
+actions are classified as a conflict.
 
 Conflicted LR grammars still produce an inspectable generation artifact, but
 the deterministic runtime rejects them until conflicts are resolved.

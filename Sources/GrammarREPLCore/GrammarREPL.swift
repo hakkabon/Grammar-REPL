@@ -141,8 +141,24 @@ public final class GrammarREPL {
         let conflicts = try automaton().conflicts
         guard conflicts.indices.contains(requested - 1) else { throw Message("Conflict number must be between 1 and \(conflicts.count).") }
         let conflict = conflicts[requested - 1]
-        output("\(conflict)\nState path witness: \(conflict.witness.map(\.description).joined(separator: " "))")
-        if let state = try automaton().state(conflict.state) { output(state.description) }
+        output("Conflict \(requested): \(conflict.kind.rawValue) in state \(conflict.state) on \(conflict.lookahead)")
+        output("Stable ID: \(conflict.identity)")
+        output("Shortest witness: \(conflict.witness.map(\.description).joined(separator: " "))")
+        output("Competing action origins:")
+        for (index, candidate) in conflict.candidates.enumerated() {
+            output("  [\(index + 1)] \(render(candidate.action))")
+            output("      Why: \(candidate.reason)")
+            output("      Origin item: \(candidate.item)")
+            output("      Item ID: \(candidate.item.identity)")
+            output("      Candidate ID: \(candidate.identity)")
+        }
+        if conflict.candidates.isEmpty {
+            for (index, action) in conflict.actions.enumerated() { output("  [\(index + 1)] \(render(action))") }
+        }
+        if let state = try automaton().state(conflict.state) {
+            output("State context [\(state.identity)]:")
+            output(state.description)
+        }
     }
 
     private func showFirst(_ name: String) throws {
@@ -282,6 +298,14 @@ public final class GrammarREPL {
     }
 
     private func render(_ symbols: Set<Symbol>) -> String { symbols.map(\.description).sorted().joined(separator: ", ") }
+
+    private func render(_ action: LR_Parsing.LRAction) -> String {
+        switch action {
+        case .shift(let target): "shift to state \(target)"
+        case .reduce(let production): "reduce by \(production)"
+        case .accept: "accept"
+        }
+    }
 
     private func renderTree(_ tree: ParseTree, in source: String) -> String {
         func visit(_ node: ParseTree, prefix: String, marker: String) -> [String] {
