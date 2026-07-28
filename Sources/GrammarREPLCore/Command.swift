@@ -22,7 +22,7 @@ public enum REPLCommand: Equatable {
     case load(path: String, start: String?)
     case parser(REPLParser?)
     case first(String), follow(String), predict(String), parse(String)
-    case tree(Int?), state(Int?), explain(Int?)
+    case tree(Int?), state(Int?), explain(Int?), replay(Int?)
     case diagram(String), export(artifact: String, path: String)
     case trace(String?), identity(String)
     case unknown(String)
@@ -53,6 +53,7 @@ public enum REPLCommand: Equatable {
         case "tree": return .tree(argument.isEmpty ? nil : Int(argument))
         case "state": return .state(argument.isEmpty ? nil : Int(argument))
         case "explain": return .explain(argument.isEmpty ? nil : Int(argument))
+        case "replay": return .replay(argument.isEmpty ? nil : Int(argument))
         case "settings": return .settings
         case "history": return .history
         case "diagram": return .diagram(argument)
