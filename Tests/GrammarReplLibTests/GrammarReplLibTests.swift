@@ -18,6 +18,7 @@ struct CommandTests {
         #expect(REPLCommand.decode(":trace") == .trace(nil))
         #expect(REPLCommand.decode(":identity state 4") == .identity("state 4"))
         #expect(REPLCommand.decode(":precedence 2 left + -") == .precedence("2 left + -"))
+        #expect(REPLCommand.decode(":resolution reduce") == .resolution("reduce"))
     }
 
     @Test func decodesQuotedLoadAndPlainInput() {
@@ -136,6 +137,31 @@ struct ConflictExplanationTests {
         #expect(repl.session.automaton?.resolvedConflicts.count == 1)
         #expect(repl.session.automaton?.unresolvedConflicts.isEmpty == true)
         #expect(output.joined(separator: "\n").contains("Accepted by lalr"))
+    }
+
+    @Test func resolutionPolicyResolvesConflictAndInvalidatesArtifact() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grammar-repl-policy-\(UUID().uuidString).bnf")
+        try "<E> ::= <E> \"+\" <E> | \"id\"".write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        var output: [String] = []
+        let repl = GrammarREPL(output: { output.append($0) })
+        repl.execute(.load(path: url.path, start: "E"))
+        repl.execute(.parser(.lalr))
+        repl.execute(.check)
+        #expect(repl.session.automaton?.unresolvedConflicts.count == 1)
+        repl.execute(.resolution("reduce"))
+        #expect(repl.session.automaton == nil)
+        repl.execute(.check)
+        repl.execute(.explain(1))
+        repl.execute(.parse("id + id + id"))
+
+        #expect(repl.session.automaton?.resolvedConflicts.count == 1)
+        #expect(repl.session.automaton?.unresolvedConflicts.isEmpty == true)
+        let text = output.joined(separator: "\n")
+        #expect(text.contains("policy preferReduce"))
+        #expect(text.contains("Accepted by lalr"))
     }
 }
 

@@ -68,6 +68,7 @@ public final class GrammarREPL {
             case .trace(let argument): showTrace(argument)
             case .identity(let specification): try showIdentity(specification)
             case .precedence(let specification): try configurePrecedence(specification)
+            case .resolution(let specification): try configureResolution(specification)
             case .unknown(let text): if !text.isEmpty { output("Unknown or incomplete command: \(text)\nType :help for usage.") }
             }
         } catch { output("Error: \(error)") }
@@ -225,7 +226,7 @@ public final class GrammarREPL {
         case .rnglr: trees = try RNGLRParser(grammar: grammar).allSyntaxTrees(for: input)
         case .lr0, .slr, .lalr, .lr1:
             guard let algorithm = session.parser.lrAlgorithm else { throw Message("Missing LR algorithm.") }
-            let outcome = try LRParser(grammar: grammar, algorithm: algorithm, precedence: session.precedence).parseOutcome(input, recovery: .localRepair(maxEdits: 2), tracing: session.traceEnabled)
+            let outcome = try LRParser(grammar: grammar, algorithm: algorithm, precedence: session.precedence, resolutionPolicy: session.resolutionPolicy).parseOutcome(input, recovery: .localRepair(maxEdits: 2), tracing: session.traceEnabled)
             session.storeTrace(outcome.trace)
             for diagnostic in outcome.diagnostics { output(diagnostic.description) }
             for edit in outcome.recoveryEdits { output("Recovery: \(edit)") }
@@ -244,7 +245,7 @@ public final class GrammarREPL {
     }
 
     private func showSettings() {
-        output("Grammar: \(session.loaded?.url.path ?? "none")\nParser: \(session.parser.rawValue)\nLast input: \(session.lastInput ?? "none")\nLR artifact: \(session.automaton.map { "\($0.states.count) states" } ?? "not generated")\nPrecedence levels: \(session.precedenceLevels.count)\nTracing: \(session.traceEnabled ? "on" : "off")")
+        output("Grammar: \(session.loaded?.url.path ?? "none")\nParser: \(session.parser.rawValue)\nLast input: \(session.lastInput ?? "none")\nLR artifact: \(session.automaton.map { "\($0.states.count) states" } ?? "not generated")\nPrecedence levels: \(session.precedenceLevels.count)\nResolution policy: \(session.resolutionPolicy?.rawValue ?? "none")\nTracing: \(session.traceEnabled ? "on" : "off")")
     }
 
     private func showTrace(_ rawArgument: String?) {
@@ -318,6 +319,17 @@ public final class GrammarREPL {
         output("Declared precedence level \(number) as \(associativity) for \(terminals.map(\.description).sorted().joined(separator: ", ")).")
     }
 
+    private func configureResolution(_ specification: String) throws {
+        switch specification.lowercased() {
+        case "": output("Resolution policy: \(session.resolutionPolicy?.rawValue ?? "none").")
+        case "shift": session.setResolutionPolicy(.preferShift); output("Resolution policy set to prefer shift.")
+        case "reduce": session.setResolutionPolicy(.preferReduce); output("Resolution policy set to prefer reduce.")
+        case "reject": session.setResolutionPolicy(.reject); output("Resolution policy set to reject conflicted cells.")
+        case "clear", "none": session.setResolutionPolicy(nil); output("Resolution policy cleared.")
+        default: throw Message("Use :resolution [shift|reduce|reject|clear].")
+        }
+    }
+
     private func renderArtifact(_ rawSpecification: String) throws -> RenderedArtifact {
         let words = rawSpecification.split(whereSeparator: \.isWhitespace).map(String.init)
         guard let kind = words.first?.lowercased() else {
@@ -358,7 +370,7 @@ public final class GrammarREPL {
     private func automaton() throws -> LR_Parsing.LRAutomaton {
         if let value = session.automaton { return value }
         guard let algorithm = session.parser.lrAlgorithm else { throw Message("Select lr0, slr, lalr, or lr1 first.") }
-        let value = LRParser(grammar: try grammar(), algorithm: algorithm, precedence: session.precedence).generate()
+        let value = LRParser(grammar: try grammar(), algorithm: algorithm, precedence: session.precedence, resolutionPolicy: session.resolutionPolicy).generate()
         session.storeAutomaton(value)
         return value
     }
@@ -405,6 +417,7 @@ public final class GrammarREPL {
       :explain <number>      Explain an LR conflict with shortest witness
       :replay <number>       Replay a witness to its LR conflict decision
       :precedence <spec>     List/set/clear LR precedence declarations
+      :resolution [policy]  Set shift/reduce/reject conflict policy
       :first/:follow/:predict <nonterminal>
       :parse <input>         Parse; LR modes use bounded local repair
       :tree [number]         Show the last parse tree
