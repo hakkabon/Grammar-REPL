@@ -7,10 +7,13 @@ import LR_Parsing
 @Suite("Command decoding")
 struct CommandTests {
     @Test func decodesLRCommands() {
-        #expect(REPLCommand.decode(":conflicts") == .conflicts)
+        #expect(REPLCommand.decode(":conflicts") == .conflicts(nil))
+        #expect(REPLCommand.decode(":conflicts resolved") == .conflicts("resolved"))
         #expect(REPLCommand.decode(":state 12") == .state(12))
         #expect(REPLCommand.decode(":explain 2") == .explain(2))
-        #expect(REPLCommand.decode(":replay 2") == .replay(2))
+        #expect(REPLCommand.decode(":replay 2") == .replay(2, branches: false))
+        #expect(REPLCommand.decode(":replay 2 all") == .replay(2, branches: true))
+        #expect(REPLCommand.decode(":decisions 4") == .decisions(4))
         #expect(REPLCommand.decode(":parser lalr") == .parser(.lalr))
         #expect(REPLCommand.decode(":diagram state 3") == .diagram("state 3"))
         #expect(REPLCommand.decode(":export state:3 out.dot") == .export(artifact: "state:3", path: "out.dot"))
@@ -108,7 +111,7 @@ struct ConflictExplanationTests {
         let repl = GrammarREPL(output: { output.append($0) })
         repl.execute(.load(path: url.path, start: "E"))
         repl.execute(.parser(.lalr))
-        repl.execute(.replay(1))
+        repl.execute(.replay(1, branches: false))
 
         let text = output.joined(separator: "\n")
         #expect(text.contains("Replay conflict 1:"))
@@ -155,12 +158,19 @@ struct ConflictExplanationTests {
         #expect(repl.session.automaton == nil)
         repl.execute(.check)
         repl.execute(.explain(1))
+        repl.execute(.conflicts("resolved"))
+        repl.execute(.decisions(nil))
+        repl.execute(.replay(1, branches: true))
         repl.execute(.parse("id + id + id"))
 
         #expect(repl.session.automaton?.resolvedConflicts.count == 1)
         #expect(repl.session.automaton?.unresolvedConflicts.isEmpty == true)
         let text = output.joined(separator: "\n")
         #expect(text.contains("policy preferReduce"))
+        #expect(text.contains("Branch 1: force"))
+        #expect(text.contains("Branch 2: force"))
+        #expect(text.contains("Outcome:"))
+        #expect(text.contains("origin(s), ID"))
         #expect(text.contains("Accepted by lalr"))
     }
 }

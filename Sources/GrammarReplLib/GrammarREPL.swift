@@ -51,10 +51,11 @@ public final class GrammarREPL {
             case .grammar: output(String(describing: try grammar()))
             case .parser(let parser): setParser(parser)
             case .check: try check()
-            case .conflicts: try showConflicts()
+            case .conflicts(let filter): try showConflicts(filter)
+            case .decisions(let state): try showDecisions(state)
             case .state(let id): try showState(id)
             case .explain(let id): try explain(id)
-            case .replay(let id): try replay(id)
+            case .replay(let id, let branches): try replay(id, branches: branches)
             case .first(let name): try showFirst(name)
             case .follow(let name): try showFollow(name)
             case .predict(let name): try showPredict(name)
@@ -121,7 +122,7 @@ public final class GrammarREPL {
         }
     }
 
-    private func showConflicts() throws {
+    private func showConflicts(_ filter: String?) throws {
         if session.parser.lrAlgorithm == nil {
             let conflicts: [LLConflict]
             if let cached = session.analysis { conflicts = cached.llConflicts }
@@ -132,11 +133,34 @@ public final class GrammarREPL {
             }
             return
         }
-        let conflicts = try automaton().conflicts
-        guard !conflicts.isEmpty else { output("No \(session.parser.rawValue.uppercased()) conflicts."); return }
-        for (index, conflict) in conflicts.enumerated() {
+        let artifact = try automaton()
+        let all = artifact.allConflicts
+        let visible: [(Int, LRConflict)]
+        switch filter ?? "all" {
+        case "all": visible = Array(all.enumerated())
+        case "resolved": visible = all.enumerated().filter { $0.element.isResolved }
+        case "unresolved": visible = all.enumerated().filter { !$0.element.isResolved }
+        default: throw Message("Use :conflicts [all|resolved|unresolved].")
+        }
+        guard !visible.isEmpty else { output("No matching \(session.parser.rawValue.uppercased()) conflicts."); return }
+        for (index, conflict) in visible {
             output("[\(index + 1)] [\(conflict.status.rawValue)] \(conflict)\n    witness: \(conflict.witness.map(\.description).joined(separator: " "))")
         }
+    }
+
+    private func showDecisions(_ requestedState: Int?) throws {
+        let artifact = try automaton()
+        if let requestedState, artifact.state(requestedState) == nil { throw Message("Unknown LR state \(requestedState).") }
+        let states = requestedState.map { [$0] } ?? artifact.actionDecisions.keys.sorted()
+        var count = 0
+        for state in states {
+            for (lookahead, decision) in (artifact.actionDecisions[state] ?? [:]).sorted(by: { $0.key.description < $1.key.description }) {
+                let selected = decision.selectedAction.map(render) ?? "error"
+                output("state \(state), lookahead \(lookahead): \(selected) [\(decision.status.rawValue)]\n    \(decision.resolution)\n    \(decision.candidates.count) origin(s), ID \(decision.identity)")
+                count += 1
+            }
+        }
+        if count == 0 { output(requestedState.map { "No ACTION decisions in state \($0)." } ?? "No ACTION decisions.") }
     }
 
     private func showState(_ requested: Int?) throws {
@@ -149,7 +173,7 @@ public final class GrammarREPL {
 
     private func explain(_ requested: Int?) throws {
         guard let requested, requested > 0 else { throw Message("Provide a one-based conflict number: :explain <number>") }
-        let conflicts = try automaton().conflicts
+        let conflicts = try automaton().allConflicts
         guard conflicts.indices.contains(requested - 1) else { throw Message("Conflict number must be between 1 and \(conflicts.count).") }
         let conflict = conflicts[requested - 1]
         output("Conflict \(requested): \(conflict.kind.rawValue) in state \(conflict.state) on \(conflict.lookahead)")
@@ -179,11 +203,12 @@ public final class GrammarREPL {
         }
     }
 
-    private func replay(_ requested: Int?) throws {
+    private func replay(_ requested: Int?, branches: Bool) throws {
         guard let requested, requested > 0 else { throw Message("Provide a one-based conflict number: :replay <number>") }
         let artifact = try automaton()
-        guard artifact.conflicts.indices.contains(requested - 1) else { throw Message("Conflict number must be between 1 and \(artifact.conflicts.count).") }
-        let conflict = artifact.conflicts[requested - 1]
+        let conflicts = artifact.allConflicts
+        guard conflicts.indices.contains(requested - 1) else { throw Message("Conflict number must be between 1 and \(conflicts.count).") }
+        let conflict = conflicts[requested - 1]
         let replay = artifact.replay(conflict)
         output("Replay conflict \(requested): \(conflict.identity)")
         output("Witness: \(conflict.witness.map(\.description).joined(separator: " "))")
@@ -196,6 +221,13 @@ public final class GrammarREPL {
             }
         } else {
             output("Replay did not reach the conflict: \(replay.failure ?? "unknown reason").")
+        }
+        if branches, replay.reachedConflict {
+            for (index, branch) in artifact.replayBranches(conflict).enumerated() {
+                output("Branch \(index + 1): force \(render(branch.action))\(branch.wasSelected ? " [selected]" : "")")
+                for step in branch.steps.dropFirst(replay.steps.count) { output("  \(step.description)") }
+                output("  Outcome: \(branch.outcome)")
+            }
         }
     }
 
@@ -274,8 +306,8 @@ public final class GrammarREPL {
             guard let value = artifact.state(index) else { throw Message("Unknown LR state \(index).") }
             output(value.identity.rawValue)
         case "conflict":
-            guard index > 0, artifact.conflicts.indices.contains(index - 1) else { throw Message("Unknown one-based conflict \(index).") }
-            output(artifact.conflicts[index - 1].identity.rawValue)
+            guard index > 0, artifact.allConflicts.indices.contains(index - 1) else { throw Message("Unknown one-based conflict \(index).") }
+            output(artifact.allConflicts[index - 1].identity.rawValue)
         case "production":
             guard index > 0, artifact.productions.indices.contains(index - 1) else { throw Message("Unknown one-based production \(index).") }
             let value = artifact.productions[index - 1]
@@ -413,9 +445,10 @@ public final class GrammarREPL {
       :parser [name]         Select earley/cyk/rnglr/lr0/slr/lalr/lr1
       :check                 Show LL and selected LR analysis summary
       :conflicts             List structured LL or LR conflicts
+      :decisions [state]     Inspect generated ACTION decisions
       :state <number>        Inspect an LR state and outgoing transitions
       :explain <number>      Explain an LR conflict with shortest witness
-      :replay <number>       Replay a witness to its LR conflict decision
+      :replay <number> [all] Replay a witness, optionally forcing all branches
       :precedence <spec>     List/set/clear LR precedence declarations
       :resolution [policy]  Set shift/reduce/reject conflict policy
       :first/:follow/:predict <nonterminal>

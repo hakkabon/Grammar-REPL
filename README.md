@@ -266,7 +266,9 @@ and reports state and LR-conflict counts.
 ### `:conflicts`, `:state`, `:explain`, and `:replay`
 
 `:conflicts` lists shared structured LL conflicts in generalized-parser modes,
-or LR shift/reduce and reduce/reduce conflicts in LR modes. `:state N` renders
+or LR shift/reduce and reduce/reduce cells in LR modes. Use `:conflicts
+unresolved`, `:conflicts resolved`, or `:conflicts all` to filter the LR view;
+displayed numbers remain stable across filters. `:state N` renders
 the items and outgoing transitions of state `N`. `:explain N` shows the
 one-based LR conflict `N`, its stable identity, and the shortest terminal
 witness reaching the conflict lookahead. Each competing candidate then shows:
@@ -322,13 +324,25 @@ cell and reports the selected action and policy. If a generated witness cannot
 reach its advertised cell, replay returns a structured failure instead of
 silently producing a misleading trace.
 
+`:replay N all` additionally forces each competing action from the identical
+stack and token position, then follows generated decisions until acceptance,
+rejection, or the replay bound. Each branch indicates whether it was selected
+by the active resolution policy and reports its independent outcome.
+
+`:decisions` lists every generated ACTION decision; `:decisions N` restricts
+the view to state `N`. Entries show the selected action or error cell,
+resolved/unresolved status, policy explanation, origin count, and stable ID.
+
 The artifact retains origins for every ACTION cell, including multiple items
 that independently justify the same selected action. Only distinct competing
 actions are classified as a conflict.
 
 Conflicted LR grammars still produce an inspectable generation artifact. The
 deterministic runtime accepts intentionally resolved tables and rejects tables
-that retain any unresolved conflict.
+that retain any unresolved conflict. In LR-Parsing itself, `conflicts` contains
+only unresolved conflicts, while `resolvedConflicts` and `resolvedDecisions`
+hold intentional decisions; `allConflicts` provides the combined sorted view
+used for stable REPL numbering.
 
 ### `:first <nonterminal>`
 
