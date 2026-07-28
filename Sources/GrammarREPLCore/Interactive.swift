@@ -37,7 +37,7 @@ public enum CommandCompletion {
         case ":state", ":decisions": values = session.automaton?.states.map { String($0.id) } ?? []
         case ":explain", ":replay": values = session.automaton?.allConflicts.indices.map { String($0 + 1) } ?? []
         case ":conflicts": values = ["all", "resolved", "unresolved"]
-        case ":diagram": values = ["grammar", "automaton", "tree", "rule", "state"]
+        case ":diagram": values = ["grammar", "automaton", "conflict", "tree", "rule", "state"]
         case ":trace": values = ["on", "off", "clear"]
         case ":identity": values = ["state", "conflict", "production"]
         case ":resolution": values = ["shift", "reduce", "reject", "clear"]

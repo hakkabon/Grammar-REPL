@@ -67,8 +67,8 @@ The prototype currently supports:
 - inspecting generated LR states, transitions, ACTION/GOTO tables, conflicts,
   and shortest conflict witnesses;
 - structured parser outcomes and bounded local repair in deterministic LR modes;
-- ASCII railroad diagrams plus DOT renderers for LR automata, LR states, and
-  retained parse trees;
+- ASCII railroad diagrams plus DOT renderers for LR automata, LR states,
+  conflict explanations, and retained parse trees;
 - persistent interactive history and semantic tab completion;
 - stable semantic identities for LR productions, items, states, transitions,
   and conflicts;
@@ -486,18 +486,23 @@ Graphical artifacts use reusable renderers in `GrammarREPLCore`:
 :diagram rule expression
 :diagram automaton
 :diagram state 12
+:diagram conflict 1
 :diagram tree
 
 :export automaton automaton.dot
 :export state:12 state-12.dot
+:export conflict:1 conflict-1.dot
 :export rule:expression expression.txt
 :export tree parse-tree.dot
 ```
 
 Grammar and rule diagrams use the Grammar package's ASCII railroad renderer.
-Automata, individual LR states, and syntax trees use Graphviz DOT. Red borders
-identify LR states containing conflicts. Export writes the renderer's content
-without invoking an external viewer, so the library remains usable in tests and
+Automata, individual LR states, conflict explanations, and syntax trees use
+Graphviz DOT. A conflict explanation highlights the shortest witness path and
+conflict state, connects every candidate to its action origin and stable IDs,
+shows the explicit resolution decision, and reports the outcome obtained by
+replaying each forced branch. Export writes the renderer's content without
+invoking an external viewer, so the library remains usable in tests and
 headless tools.
 
 ### History and completion
@@ -740,8 +745,10 @@ commands consume. The currently connected commands include:
 :diagram rule expression
 :diagram automaton
 :diagram state 12
+:diagram conflict 1
 :diagram tree
 :export state:12 state-12.dot
+:export conflict:1 conflict-1.dot
 ```
 
 The boundary is the `GrammarArtifactRenderer` protocol:

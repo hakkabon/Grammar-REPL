@@ -357,7 +357,7 @@ public final class GrammarREPL {
     private func renderArtifact(_ rawSpecification: String) throws -> RenderedArtifact {
         let words = rawSpecification.split(whereSeparator: \.isWhitespace).map(String.init)
         guard let kind = words.first?.lowercased() else {
-            throw Message("Use :diagram grammar|rule <name>|automaton|state <number>|tree")
+            throw Message("Use :diagram grammar|rule <name>|automaton|state <number>|conflict <number>|tree")
         }
         switch kind {
         case "grammar": return try RailroadGrammarRenderer().render(grammar())
@@ -368,6 +368,11 @@ public final class GrammarREPL {
         case "state":
             guard words.count == 2, let id = Int(words[1]) else { throw Message("Use :diagram state <number>") }
             return try LRAutomatonDOTRenderer(selectedState: id).render(automaton())
+        case "conflict":
+            guard words.count == 2, let index = Int(words[1]), index > 0 else { throw Message("Use :diagram conflict <number>") }
+            let artifact = try automaton()
+            guard artifact.allConflicts.indices.contains(index - 1) else { throw Message("Unknown one-based conflict \(index).") }
+            return try LRConflictDOTRenderer().render(artifact.allConflicts[index - 1], in: artifact)
         case "tree":
             guard let tree = session.lastTrees.first, let source = session.lastInput else { throw ArtifactRenderingError.unavailable("No successful parse tree is available.") }
             return try SyntaxTreeDOTRenderer().render((tree, source))
@@ -375,6 +380,11 @@ public final class GrammarREPL {
             // Compact export spelling: rule:name or state:number.
             if kind.hasPrefix("rule:") { return try RailroadGrammarRenderer().render(rule: String(kind.dropFirst(5)), in: grammar()) }
             if kind.hasPrefix("state:"), let id = Int(kind.dropFirst(6)) { return try LRAutomatonDOTRenderer(selectedState: id).render(automaton()) }
+            if kind.hasPrefix("conflict:"), let index = Int(kind.dropFirst(9)), index > 0 {
+                let artifact = try automaton()
+                guard artifact.allConflicts.indices.contains(index - 1) else { throw Message("Unknown one-based conflict \(index).") }
+                return try LRConflictDOTRenderer().render(artifact.allConflicts[index - 1], in: artifact)
+            }
             throw Message("Unknown graphical artifact: \(kind)")
         }
     }

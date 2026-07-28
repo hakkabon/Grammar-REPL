@@ -192,6 +192,22 @@ struct ArtifactRendererTests {
         #expect(rendered.content.hasPrefix("digraph LRAutomaton"))
         #expect(rendered.content.contains("->"))
     }
+
+    @Test func conflictRendererConnectsWitnessOriginsDecisionAndBranches() throws {
+        let grammar = try Grammar(bnf: "<E> ::= <E> \"+\" <E> | \"id\"", start: "E")
+        let artifact = LRParser(grammar: grammar, algorithm: .lalr).generate()
+        let conflict = try #require(artifact.allConflicts.first)
+        let rendered = try LRConflictDOTRenderer().render(conflict, in: artifact)
+
+        #expect(rendered.format == .dot)
+        #expect(rendered.content.hasPrefix("digraph LRConflictExplanation"))
+        #expect(rendered.content.contains("Automaton and witness path"))
+        #expect(rendered.content.contains("Competing action origins"))
+        #expect(rendered.content.contains("Candidate ID:"))
+        #expect(rendered.content.contains("Decision [unresolved]"))
+        #expect(rendered.content.contains("[selected]"))
+        #expect(rendered.content.contains("Branch outcome:"))
+    }
 }
 
 @Suite("Session invalidation")
