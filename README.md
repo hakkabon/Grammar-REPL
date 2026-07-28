@@ -82,7 +82,7 @@ The prototype currently supports:
 The prototype does **not** yet implement:
 
 - LL(1) runtime parsing through the `LL-Parsing` package;
-- precedence-based conflict resolution.
+- precedence declarations embedded directly in BNF/EBNF/WSN source files.
 
 These are planned extensions, not hidden or incomplete commands.
 
@@ -279,9 +279,25 @@ witness reaching the conflict lookahead. Each competing candidate then shows:
 - the complete conflicting state as context.
 
 The explanation also identifies the selected action, its stable decision ID,
-and the explicit policy used to select it. The current generator distinguishes
-sole-action, accept-preference, shift-preference, and deterministic
-generation-order decisions.
+its resolved/unresolved status, and the explicit policy used to select it.
+Fallback accept, shift, and generation-order choices remain unresolved and
+continue to block strict deterministic parsing.
+
+Declare interactive precedence levels with a positive or negative integer;
+larger numbers bind more tightly:
+
+```text
+:precedence 1 left + -
+:precedence 2 left * /
+:precedence 3 right ^
+:precedence 4 nonassoc < >
+:precedence             # list declarations
+:precedence clear
+```
+
+Equal-precedence shift/reduce cells select reduce for `left`, shift for
+`right`, and an error ACTION cell for `nonassoc`. Precedence declarations are
+specific to the loaded grammar and are cleared by `:load` or `:reload`.
 
 `:replay N` executes conflict `N`'s shortest terminal witness against the
 generated ACTION and GOTO decisions. It prints each shift and reduction with
@@ -294,8 +310,9 @@ The artifact retains origins for every ACTION cell, including multiple items
 that independently justify the same selected action. Only distinct competing
 actions are classified as a conflict.
 
-Conflicted LR grammars still produce an inspectable generation artifact, but
-the deterministic runtime rejects them until conflicts are resolved.
+Conflicted LR grammars still produce an inspectable generation artifact. The
+deterministic runtime accepts intentionally resolved tables and rejects tables
+that retain any unresolved conflict.
 
 ### `:first <nonterminal>`
 
