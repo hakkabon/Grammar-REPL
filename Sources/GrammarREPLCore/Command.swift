@@ -18,13 +18,13 @@ public enum REPLParser: String, CaseIterable, Equatable {
 public enum REPLNotation: String, CaseIterable { case bnf, ebnf, wsn, gen }
 
 public enum REPLCommand: Equatable {
-    case help, quit, reload, grammar, check, conflicts, settings, history
+    case help, quit, reload, grammar, check, settings, history
     case load(path: String, start: String?)
     case parser(REPLParser?)
     case first(String), follow(String), predict(String), parse(String)
-    case tree(Int?), state(Int?), explain(Int?), replay(Int?)
+    case tree(Int?), state(Int?), explain(Int?), replay(Int?, branches: Bool)
     case diagram(String), export(artifact: String, path: String)
-    case trace(String?), identity(String), precedence(String), resolution(String)
+    case trace(String?), identity(String), precedence(String), resolution(String), conflicts(String?), decisions(Int?)
     case unknown(String)
 
     public static func decode(_ line: String) -> REPLCommand {
@@ -45,7 +45,7 @@ public enum REPLCommand: Equatable {
         case "grammar": return .grammar
         case "parser": return .parser(REPLParser(rawValue: argument.lowercased()))
         case "check": return .check
-        case "conflicts": return .conflicts
+        case "conflicts": return .conflicts(argument.isEmpty ? nil : argument.lowercased())
         case "first": return .first(argument)
         case "follow": return .follow(argument)
         case "predict": return .predict(argument)
@@ -53,7 +53,9 @@ public enum REPLCommand: Equatable {
         case "tree": return .tree(argument.isEmpty ? nil : Int(argument))
         case "state": return .state(argument.isEmpty ? nil : Int(argument))
         case "explain": return .explain(argument.isEmpty ? nil : Int(argument))
-        case "replay": return .replay(argument.isEmpty ? nil : Int(argument))
+        case "replay":
+            let words = argument.split(whereSeparator: \.isWhitespace).map(String.init)
+            return .replay(words.first.flatMap(Int.init), branches: words.dropFirst().contains { $0.lowercased() == "all" || $0.lowercased() == "branches" })
         case "settings": return .settings
         case "history": return .history
         case "diagram": return .diagram(argument)
@@ -64,6 +66,7 @@ public enum REPLCommand: Equatable {
         case "identity": return .identity(argument)
         case "precedence": return .precedence(argument)
         case "resolution": return .resolution(argument)
+        case "decisions": return .decisions(argument.isEmpty ? nil : Int(argument))
         default: return .unknown(text)
         }
     }

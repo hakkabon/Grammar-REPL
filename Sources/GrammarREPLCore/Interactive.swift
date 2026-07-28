@@ -20,7 +20,7 @@ public struct CommandHistory {
 public enum CommandCompletion {
     public static let commands = [
         ":help", ":quit", ":load", ":reload", ":grammar", ":parser",
-        ":check", ":conflicts", ":state", ":explain", ":replay", ":first", ":follow",
+        ":check", ":conflicts", ":decisions", ":state", ":explain", ":replay", ":first", ":follow",
         ":predict", ":parse", ":tree", ":trace", ":identity", ":precedence", ":resolution", ":diagram", ":export", ":history", ":settings"
     ]
 
@@ -34,8 +34,9 @@ public enum CommandCompletion {
         switch command {
         case ":parser": values = REPLParser.allCases.map(\.rawValue)
         case ":first", ":follow", ":predict": values = session.loaded?.grammar.nonTerminals.map(\.name) ?? []
-        case ":state": values = session.automaton?.states.map { String($0.id) } ?? []
-        case ":explain", ":replay": values = session.automaton?.conflicts.indices.map { String($0 + 1) } ?? []
+        case ":state", ":decisions": values = session.automaton?.states.map { String($0.id) } ?? []
+        case ":explain", ":replay": values = session.automaton?.allConflicts.indices.map { String($0 + 1) } ?? []
+        case ":conflicts": values = ["all", "resolved", "unresolved"]
         case ":diagram": values = ["grammar", "automaton", "tree", "rule", "state"]
         case ":trace": values = ["on", "off", "clear"]
         case ":identity": values = ["state", "conflict", "production"]
