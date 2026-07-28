@@ -17,6 +17,7 @@ struct CommandTests {
         #expect(REPLCommand.decode(":trace on") == .trace("on"))
         #expect(REPLCommand.decode(":trace") == .trace(nil))
         #expect(REPLCommand.decode(":identity state 4") == .identity("state 4"))
+        #expect(REPLCommand.decode(":precedence 2 left + -") == .precedence("2 left + -"))
     }
 
     @Test func decodesQuotedLoadAndPlainInput() {
@@ -112,7 +113,29 @@ struct ConflictExplanationTests {
         #expect(text.contains("Replay conflict 1:"))
         #expect(text.contains("Reached conflict in state"))
         #expect(text.contains("Selected shift to state"))
-        #expect(text.contains("shift actions take precedence"))
+        #expect(text.contains("unresolved fallback policy"))
+    }
+
+    @Test func precedenceCommandResolvesConflictAndEnablesParsing() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grammar-repl-precedence-\(UUID().uuidString).bnf")
+        try "<E> ::= <E> \"+\" <E> | \"id\"".write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        var output: [String] = []
+        let repl = GrammarREPL(output: { output.append($0) })
+        repl.execute(.load(path: url.path, start: "E"))
+        repl.execute(.parser(.lalr))
+        repl.execute(.check)
+        #expect(repl.session.automaton?.unresolvedConflicts.count == 1)
+        repl.execute(.precedence("1 left +"))
+        #expect(repl.session.automaton == nil)
+        repl.execute(.check)
+        repl.execute(.parse("id + id + id"))
+
+        #expect(repl.session.automaton?.resolvedConflicts.count == 1)
+        #expect(repl.session.automaton?.unresolvedConflicts.isEmpty == true)
+        #expect(output.joined(separator: "\n").contains("Accepted by lalr"))
     }
 }
 

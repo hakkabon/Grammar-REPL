@@ -67,6 +67,7 @@ public final class GrammarREPL {
             case .export(let artifact, let path): try exportArtifact(artifact, to: path)
             case .trace(let argument): showTrace(argument)
             case .identity(let specification): try showIdentity(specification)
+            case .precedence(let specification): try configurePrecedence(specification)
             case .unknown(let text): if !text.isEmpty { output("Unknown or incomplete command: \(text)\nType :help for usage.") }
             }
         } catch { output("Error: \(error)") }
@@ -115,7 +116,7 @@ public final class GrammarREPL {
         output(analysis.llConflicts.isEmpty ? "LL(1) prediction sets are disjoint." : "Found \(analysis.llConflicts.count) LL(1) prediction conflict(s).")
         if session.parser.lrAlgorithm != nil {
             let artifact = try automaton()
-            output("\(session.parser.rawValue.uppercased()): \(artifact.states.count) states, \(artifact.conflicts.count) conflict(s).")
+            output("\(session.parser.rawValue.uppercased()): \(artifact.states.count) states, \(artifact.resolvedConflicts.count) resolved and \(artifact.unresolvedConflicts.count) unresolved conflict(s).")
         }
     }
 
@@ -133,7 +134,7 @@ public final class GrammarREPL {
         let conflicts = try automaton().conflicts
         guard !conflicts.isEmpty else { output("No \(session.parser.rawValue.uppercased()) conflicts."); return }
         for (index, conflict) in conflicts.enumerated() {
-            output("[\(index + 1)] \(conflict)\n    witness: \(conflict.witness.map(\.description).joined(separator: " "))")
+            output("[\(index + 1)] [\(conflict.status.rawValue)] \(conflict)\n    witness: \(conflict.witness.map(\.description).joined(separator: " "))")
         }
     }
 
@@ -154,7 +155,9 @@ public final class GrammarREPL {
         output("Stable ID: \(conflict.identity)")
         output("Shortest witness: \(conflict.witness.map(\.description).joined(separator: " "))")
         if let decision = conflict.decision {
-            output("Selected action: \(render(decision.selectedAction))")
+            if let action = decision.selectedAction { output("Selected action: \(render(action))") }
+            else { output("Selected action: error") }
+            output("Status: \(decision.status.rawValue)")
             output("Resolution: \(decision.resolution)")
             output("Decision ID: \(decision.identity)")
         }
@@ -187,7 +190,8 @@ public final class GrammarREPL {
         if replay.reachedConflict {
             output("Reached conflict in state \(conflict.state) on \(conflict.lookahead).")
             if let decision = replay.decision {
-                output("Selected \(render(decision.selectedAction)) because \(decision.resolution).")
+                if let action = decision.selectedAction { output("Selected \(render(action)) because \(decision.resolution).") }
+                else { output("Selected an error ACTION because \(decision.resolution).") }
             }
         } else {
             output("Replay did not reach the conflict: \(replay.failure ?? "unknown reason").")
@@ -221,7 +225,7 @@ public final class GrammarREPL {
         case .rnglr: trees = try RNGLRParser(grammar: grammar).allSyntaxTrees(for: input)
         case .lr0, .slr, .lalr, .lr1:
             guard let algorithm = session.parser.lrAlgorithm else { throw Message("Missing LR algorithm.") }
-            let outcome = try LRParser(grammar: grammar, algorithm: algorithm).parseOutcome(input, recovery: .localRepair(maxEdits: 2), tracing: session.traceEnabled)
+            let outcome = try LRParser(grammar: grammar, algorithm: algorithm, precedence: session.precedence).parseOutcome(input, recovery: .localRepair(maxEdits: 2), tracing: session.traceEnabled)
             session.storeTrace(outcome.trace)
             for diagnostic in outcome.diagnostics { output(diagnostic.description) }
             for edit in outcome.recoveryEdits { output("Recovery: \(edit)") }
@@ -240,7 +244,7 @@ public final class GrammarREPL {
     }
 
     private func showSettings() {
-        output("Grammar: \(session.loaded?.url.path ?? "none")\nParser: \(session.parser.rawValue)\nLast input: \(session.lastInput ?? "none")\nLR artifact: \(session.automaton.map { "\($0.states.count) states" } ?? "not generated")\nTracing: \(session.traceEnabled ? "on" : "off")")
+        output("Grammar: \(session.loaded?.url.path ?? "none")\nParser: \(session.parser.rawValue)\nLast input: \(session.lastInput ?? "none")\nLR artifact: \(session.automaton.map { "\($0.states.count) states" } ?? "not generated")\nPrecedence levels: \(session.precedenceLevels.count)\nTracing: \(session.traceEnabled ? "on" : "off")")
     }
 
     private func showTrace(_ rawArgument: String?) {
@@ -277,6 +281,41 @@ public final class GrammarREPL {
             output("\(value.identity.rawValue)\n\(value.production)")
         default: throw Message("Use :identity state|conflict|production <number>.")
         }
+    }
+
+    private func configurePrecedence(_ specification: String) throws {
+        let words = specification.split(whereSeparator: \.isWhitespace).map(String.init)
+        if words.isEmpty {
+            guard !session.precedenceLevels.isEmpty else { output("No precedence levels declared."); return }
+            for level in session.precedenceLevels {
+                output("\(level.precedence.level) \(level.precedence.associativity): \(level.terminals.map(\.description).sorted().joined(separator: ", "))")
+            }
+            return
+        }
+        if words.count == 1, words[0].lowercased() == "clear" {
+            session.clearPrecedence()
+            output("Precedence declarations cleared.")
+            return
+        }
+        guard words.count >= 3, let number = Int(words[0]) else {
+            throw Message("Use :precedence <level> <left|right|nonassoc> <terminal>... or :precedence clear.")
+        }
+        let associativity: LRAssociativity
+        switch words[1].lowercased() {
+        case "left": associativity = .left
+        case "right": associativity = .right
+        case "nonassoc", "none": associativity = .nonAssociative
+        default: throw Message("Associativity must be left, right, or nonassoc.")
+        }
+        let available = try grammar().terminals
+        let terminals = try Set(words.dropFirst(2).map { raw -> Terminal in
+            let name = raw.count >= 2 && raw.first == "\"" && raw.last == "\"" ? String(raw.dropFirst().dropLast()) : raw
+            let terminal = Terminal(string: name)
+            guard available.contains(terminal) else { throw Message("Unknown string terminal \(raw).") }
+            return terminal
+        })
+        session.setPrecedence(LRPrecedenceLevel(number, associativity: associativity, terminals: terminals))
+        output("Declared precedence level \(number) as \(associativity) for \(terminals.map(\.description).sorted().joined(separator: ", ")).")
     }
 
     private func renderArtifact(_ rawSpecification: String) throws -> RenderedArtifact {
@@ -319,7 +358,7 @@ public final class GrammarREPL {
     private func automaton() throws -> LR_Parsing.LRAutomaton {
         if let value = session.automaton { return value }
         guard let algorithm = session.parser.lrAlgorithm else { throw Message("Select lr0, slr, lalr, or lr1 first.") }
-        let value = LRParser(grammar: try grammar(), algorithm: algorithm).generate()
+        let value = LRParser(grammar: try grammar(), algorithm: algorithm, precedence: session.precedence).generate()
         session.storeAutomaton(value)
         return value
     }
@@ -365,6 +404,7 @@ public final class GrammarREPL {
       :state <number>        Inspect an LR state and outgoing transitions
       :explain <number>      Explain an LR conflict with shortest witness
       :replay <number>       Replay a witness to its LR conflict decision
+      :precedence <spec>     List/set/clear LR precedence declarations
       :first/:follow/:predict <nonterminal>
       :parse <input>         Parse; LR modes use bounded local repair
       :tree [number]         Show the last parse tree

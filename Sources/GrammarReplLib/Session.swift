@@ -27,12 +27,17 @@ public struct REPLSession {
     public private(set) var automaton: LRAutomaton?
     public private(set) var traceEnabled = false
     public private(set) var lastTrace: [LRParserTraceEvent] = []
+    public private(set) var precedenceLevels: [LRPrecedenceLevel] = []
+    public var precedence: LRPrecedenceSpecification? {
+        precedenceLevels.isEmpty ? nil : LRPrecedenceSpecification(levels: precedenceLevels)
+    }
 
     public init() {}
 
     public mutating func load(_ grammar: LoadedGrammar) {
         loaded = grammar
         analysis = GrammarAnalysis(grammar: grammar.grammar)
+        precedenceLevels = []
         invalidateDerivedState(clearInput: true)
     }
 
@@ -53,6 +58,16 @@ public struct REPLSession {
     public mutating func setTraceEnabled(_ value: Bool) { traceEnabled = value }
     public mutating func storeTrace(_ value: [LRParserTraceEvent]) { lastTrace = value }
     public mutating func clearTrace() { lastTrace = [] }
+    public mutating func setPrecedence(_ level: LRPrecedenceLevel) {
+        precedenceLevels.removeAll { $0.precedence.level == level.precedence.level }
+        precedenceLevels.append(level)
+        precedenceLevels.sort { $0.precedence.level < $1.precedence.level }
+        invalidateDerivedState(clearInput: false)
+    }
+    public mutating func clearPrecedence() {
+        precedenceLevels = []
+        invalidateDerivedState(clearInput: false)
+    }
 
     private mutating func invalidateDerivedState(clearInput: Bool) {
         if clearInput { lastInput = nil }
