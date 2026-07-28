@@ -20,6 +20,7 @@ public struct REPLSession {
     public private(set) var traceEnabled = false
     public private(set) var lastTrace: [LRParserTraceEvent] = []
     public private(set) var precedenceLevels: [LRPrecedenceLevel] = []
+    public private(set) var resolutionPolicy: LRStandardConflictPolicy?
     public var precedence: LRPrecedenceSpecification? {
         precedenceLevels.isEmpty ? nil : LRPrecedenceSpecification(levels: precedenceLevels)
     }
@@ -30,6 +31,7 @@ public struct REPLSession {
         loaded = grammar
         analysis = GrammarAnalysis(grammar: grammar.grammar)
         precedenceLevels = []
+        resolutionPolicy = nil
         invalidateDerivedState(clearInput: true)
     }
 
@@ -58,6 +60,10 @@ public struct REPLSession {
     }
     public mutating func clearPrecedence() {
         precedenceLevels = []
+        invalidateDerivedState(clearInput: false)
+    }
+    public mutating func setResolutionPolicy(_ policy: LRStandardConflictPolicy?) {
+        resolutionPolicy = policy
         invalidateDerivedState(clearInput: false)
     }
 

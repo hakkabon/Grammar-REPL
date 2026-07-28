@@ -299,6 +299,22 @@ Equal-precedence shift/reduce cells select reduce for `left`, shift for
 `right`, and an error ACTION cell for `nonassoc`. Precedence declarations are
 specific to the loaded grammar and are cleared by `:load` or `:reload`.
 
+For conflicts not covered by precedence, select an explicit session policy:
+
+```text
+:resolution shift
+:resolution reduce
+:resolution reject
+:resolution          # show the current policy
+:resolution clear
+```
+
+Shift and reduce policies choose a matching candidate. `reject` deliberately
+installs an error ACTION cell. These choices are marked resolved and retain the
+policy name and explanation in `:explain`; clearing the policy restores the
+unresolved fallback behavior. Declared precedence takes priority over the
+general session policy. Policy changes invalidate cached automata.
+
 `:replay N` executes conflict `N`'s shortest terminal witness against the
 generated ACTION and GOTO decisions. It prints each shift and reduction with
 the parser-state stack, then stops immediately before applying the conflicted

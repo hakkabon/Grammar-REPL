@@ -24,7 +24,7 @@ public enum REPLCommand: Equatable {
     case first(String), follow(String), predict(String), parse(String)
     case tree(Int?), state(Int?), explain(Int?), replay(Int?)
     case diagram(String), export(artifact: String, path: String)
-    case trace(String?), identity(String), precedence(String)
+    case trace(String?), identity(String), precedence(String), resolution(String)
     case unknown(String)
 
     public static func decode(_ line: String) -> REPLCommand {
@@ -63,6 +63,7 @@ public enum REPLCommand: Equatable {
         case "trace": return .trace(argument.isEmpty ? nil : argument)
         case "identity": return .identity(argument)
         case "precedence": return .precedence(argument)
+        case "resolution": return .resolution(argument)
         default: return .unknown(text)
         }
     }
