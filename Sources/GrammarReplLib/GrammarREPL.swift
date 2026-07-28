@@ -54,6 +54,7 @@ public final class GrammarREPL {
             case .conflicts: try showConflicts()
             case .state(let id): try showState(id)
             case .explain(let id): try explain(id)
+            case .replay(let id): try replay(id)
             case .first(let name): try showFirst(name)
             case .follow(let name): try showFollow(name)
             case .predict(let name): try showPredict(name)
@@ -152,6 +153,11 @@ public final class GrammarREPL {
         output("Conflict \(requested): \(conflict.kind.rawValue) in state \(conflict.state) on \(conflict.lookahead)")
         output("Stable ID: \(conflict.identity)")
         output("Shortest witness: \(conflict.witness.map(\.description).joined(separator: " "))")
+        if let decision = conflict.decision {
+            output("Selected action: \(render(decision.selectedAction))")
+            output("Resolution: \(decision.resolution)")
+            output("Decision ID: \(decision.identity)")
+        }
         output("Competing action origins:")
         for (index, candidate) in conflict.candidates.enumerated() {
             output("  [\(index + 1)] \(render(candidate.action))")
@@ -166,6 +172,25 @@ public final class GrammarREPL {
         if let state = try automaton().state(conflict.state) {
             output("State context [\(state.identity)]:")
             output(state.description)
+        }
+    }
+
+    private func replay(_ requested: Int?) throws {
+        guard let requested, requested > 0 else { throw Message("Provide a one-based conflict number: :replay <number>") }
+        let artifact = try automaton()
+        guard artifact.conflicts.indices.contains(requested - 1) else { throw Message("Conflict number must be between 1 and \(artifact.conflicts.count).") }
+        let conflict = artifact.conflicts[requested - 1]
+        let replay = artifact.replay(conflict)
+        output("Replay conflict \(requested): \(conflict.identity)")
+        output("Witness: \(conflict.witness.map(\.description).joined(separator: " "))")
+        for step in replay.steps { output(step.description) }
+        if replay.reachedConflict {
+            output("Reached conflict in state \(conflict.state) on \(conflict.lookahead).")
+            if let decision = replay.decision {
+                output("Selected \(render(decision.selectedAction)) because \(decision.resolution).")
+            }
+        } else {
+            output("Replay did not reach the conflict: \(replay.failure ?? "unknown reason").")
         }
     }
 
@@ -339,6 +364,7 @@ public final class GrammarREPL {
       :conflicts             List structured LL or LR conflicts
       :state <number>        Inspect an LR state and outgoing transitions
       :explain <number>      Explain an LR conflict with shortest witness
+      :replay <number>       Replay a witness to its LR conflict decision
       :first/:follow/:predict <nonterminal>
       :parse <input>         Parse; LR modes use bounded local repair
       :tree [number]         Show the last parse tree

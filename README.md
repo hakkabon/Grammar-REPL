@@ -263,7 +263,7 @@ productions.
 When an LR parser is selected, `:check` also generates and caches its automaton
 and reports state and LR-conflict counts.
 
-### `:conflicts`, `:state`, and `:explain`
+### `:conflicts`, `:state`, `:explain`, and `:replay`
 
 `:conflicts` lists shared structured LL conflicts in generalized-parser modes,
 or LR shift/reduce and reduce/reduce conflicts in LR modes. `:state N` renders
@@ -277,6 +277,18 @@ witness reaching the conflict lookahead. Each competing candidate then shows:
 - the exact originating LR item;
 - stable item and candidate identities;
 - the complete conflicting state as context.
+
+The explanation also identifies the selected action, its stable decision ID,
+and the explicit policy used to select it. The current generator distinguishes
+sole-action, accept-preference, shift-preference, and deterministic
+generation-order decisions.
+
+`:replay N` executes conflict `N`'s shortest terminal witness against the
+generated ACTION and GOTO decisions. It prints each shift and reduction with
+the parser-state stack, then stops immediately before applying the conflicted
+cell and reports the selected action and policy. If a generated witness cannot
+reach its advertised cell, replay returns a structured failure instead of
+silently producing a misleading trace.
 
 The artifact retains origins for every ACTION cell, including multiple items
 that independently justify the same selected action. Only distinct competing
@@ -617,6 +629,7 @@ LR-Parsing exposes the generation artifact used by these commands:
 :check
 :conflicts
 :explain 1
+:replay 1
 :state 12
 ```
 
@@ -628,7 +641,9 @@ The required public model should contain at least:
 - ACTION and GOTO table entries;
 - every candidate action before conflict resolution;
 - the item or production that originated each action;
-- unresolved and precedence-resolved conflicts.
+- an explicit selected action and resolution policy for every ACTION cell;
+- replay steps that take a shortest witness to its conflict decision point;
+- unresolved and future precedence-resolved conflicts.
 
 With that model, `:state 12` is a renderer; the REPL does not duplicate table
 generation or parse diagnostic strings.

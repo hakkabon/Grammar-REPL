@@ -10,6 +10,7 @@ struct CommandTests {
         #expect(REPLCommand.decode(":conflicts") == .conflicts)
         #expect(REPLCommand.decode(":state 12") == .state(12))
         #expect(REPLCommand.decode(":explain 2") == .explain(2))
+        #expect(REPLCommand.decode(":replay 2") == .replay(2))
         #expect(REPLCommand.decode(":parser lalr") == .parser(.lalr))
         #expect(REPLCommand.decode(":diagram state 3") == .diagram("state 3"))
         #expect(REPLCommand.decode(":export state:3 out.dot") == .export(artifact: "state:3", path: "out.dot"))
@@ -91,6 +92,27 @@ struct ConflictExplanationTests {
         #expect(text.contains("shift to state"))
         #expect(text.contains("reduce by"))
         #expect(text.contains("Candidate ID:"))
+        #expect(text.contains("Selected action:"))
+        #expect(text.contains("Resolution:"))
+    }
+
+    @Test func replayReachesConflictDecision() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grammar-repl-replay-\(UUID().uuidString).bnf")
+        try "<E> ::= <E> \"+\" <E> | \"id\"".write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        var output: [String] = []
+        let repl = GrammarREPL(output: { output.append($0) })
+        repl.execute(.load(path: url.path, start: "E"))
+        repl.execute(.parser(.lalr))
+        repl.execute(.replay(1))
+
+        let text = output.joined(separator: "\n")
+        #expect(text.contains("Replay conflict 1:"))
+        #expect(text.contains("Reached conflict in state"))
+        #expect(text.contains("Selected shift to state"))
+        #expect(text.contains("shift actions take precedence"))
     }
 }
 
