@@ -9,7 +9,7 @@
 import Foundation
 import LR_Parsing
 
-public enum REPLParser: String, CaseIterable, Equatable {
+public enum REPLParser: String, CaseIterable, Equatable, Sendable {
     case earley, cyk, rnglr, lr0, slr, lalr, lr1
 
     public var lrAlgorithm: LRParser.Algorithm? {
@@ -23,7 +23,7 @@ public enum REPLParser: String, CaseIterable, Equatable {
     }
 }
 
-public enum REPLNotation: String, CaseIterable { case bnf, ebnf, wsn, gen }
+public enum REPLNotation: String, CaseIterable, Sendable { case bnf, ebnf, wsn, gen }
 
 public enum REPLCommand: Equatable {
     case help, quit, reload, grammar, check, settings, history

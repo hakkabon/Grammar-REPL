@@ -80,20 +80,21 @@ public final class GrammarREPL {
         let url = URL(fileURLWithPath: path).standardizedFileURL
         let notation = REPLNotation(rawValue: url.pathExtension.lowercased()) ?? .gen
         let text = try String(contentsOf: url, encoding: .utf8)
+        let preprocessed = try GrammarDirectiveParser.parse(text)
         let value: Grammar
         switch notation {
-        case .gen: value = try Grammar(gen: text)
+        case .gen: value = try Grammar(gen: preprocessed.grammarSource)
         case .bnf:
             guard let start, !start.isEmpty else { throw Message("BNF requires a start rule: :load file.bnf start") }
-            value = try Grammar(bnf: text, start: start)
+            value = try Grammar(bnf: preprocessed.grammarSource, start: start)
         case .ebnf:
             guard let start, !start.isEmpty else { throw Message("EBNF requires a start rule: :load file.ebnf start") }
-            value = try Grammar(ebnf: text, start: start)
+            value = try Grammar(ebnf: preprocessed.grammarSource, start: start)
         case .wsn:
             guard let start, !start.isEmpty else { throw Message("WSN requires a start rule: :load file.wsn start") }
-            value = try Grammar(wsn: text, start: start)
+            value = try Grammar(wsn: preprocessed.grammarSource, start: start)
         }
-        session.load(LoadedGrammar(url: url, notation: notation, start: start, grammar: value))
+        session.load(LoadedGrammar(url: url, notation: notation, start: start, grammar: value, source: text, directives: preprocessed.directives))
         output("Loaded \(url.lastPathComponent): \(value.productions.count) productions, start <\(value.start.name)>.")
     }
 
