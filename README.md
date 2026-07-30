@@ -77,12 +77,20 @@ The prototype currently supports:
 - parsing sample input without leaving the session;
 - retaining every derivation returned by the selected parser;
 - displaying a selected parse tree with source lexemes at its leaves;
-- showing the current session settings.
+- showing the current session settings;
+- embedded `%left`, `%right`, and `%nonassoc` precedence declarations;
+- schema-versioned JSON snapshots for workbench and editor clients;
+- conflict witness minimization and relevant-production slices;
+- generation benchmark/stress instrumentation;
+- an observable incremental LR parsing prototype;
+- a transport-neutral language-server document service.
 
 The prototype does **not** yet implement:
 
 - LL(1) runtime parsing through the `LL-Parsing` package;
-- precedence declarations embedded directly in BNF/EBNF/WSN source files.
+- resumable LR stack checkpoints (edited input is incrementally analyzed and
+  then fully validated);
+- JSON-RPC process framing for a standalone Language Server Protocol executable.
 
 These are planned extensions, not hidden or incomplete commands.
 
@@ -300,6 +308,22 @@ larger numbers bind more tightly:
 Equal-precedence shift/reduce cells select reduce for `left`, shift for
 `right`, and an error ACTION cell for `nonassoc`. Precedence declarations are
 specific to the loaded grammar and are cleared by `:load` or `:reload`.
+
+The same declarations can live at the beginning of BNF, EBNF, WSN, or GEN
+source. Declaration order establishes increasing precedence:
+
+```bnf
+%left "+" "-"
+%left "*" "/"
+%right "^"
+%nonassoc "<" ">"
+
+<expression> ::= <expression> "+" <expression> | "id"
+```
+
+Directive lines are replaced with blank lines before the notation parser runs,
+so subsequent source line numbers are preserved. Interactive `:precedence`
+commands may replace levels for the current session.
 
 For conflicts not covered by precedence, select an explicit session policy:
 
@@ -520,6 +544,83 @@ does not duplicate semantic command knowledge.
 
 `:help` (or `:?`) displays the concise command summary. `:quit`, `:exit`, and
 `:q` end the session.
+
+## Workbench and editor integration
+
+`GrammarREPLCore` now provides a UI-independent boundary for a graphical
+workbench. `GrammarWorkbenchService` owns open documents and accepts complete or
+UTF-16 ranged edits. Every successful analysis produces an immutable
+`WorkbenchDocumentSnapshot` tagged with the source revision; invalid source
+produces structured diagnostics instead of a stale artifact.
+
+```swift
+let service = GrammarWorkbenchService()
+let snapshot = service.open(
+    uri: documentURL,
+    source: grammarText,
+    revision: 1,
+    configuration: .init(notation: .bnf, start: "expression", algorithm: .lalr)
+)
+
+let json = try snapshot.artifact?.json()
+```
+
+### Versioned artifact snapshots
+
+`WorkbenchArtifactEnvelope` schema version 1 serializes normalized productions,
+FIRST/FOLLOW and LL conflicts, LR states and items, transitions, ACTION/GOTO
+entries, decisions, candidate origins, stable identities, conflicts, and
+witnesses. JSON keys and collections are emitted deterministically. Decoding
+rejects unsupported schema versions, allowing a workbench to fail explicitly
+instead of silently misreading a changed model.
+
+The envelope is a view/interchange model, not a replacement for `Grammar` or
+`LRAutomaton`. Clients should use the source revision and stable identities to
+discard stale responses and preserve cross-view selections.
+
+### Conflict minimization
+
+`LRConflictMinimizer.minimize(_:in:)` delta-debugs a shortest witness while
+requiring replay to continue reaching the same conflict cell. Its result also
+contains the productions directly responsible for competing candidates.
+`minimizeGrammar(reproducing:grammar:algorithm:)` goes further: it removes one
+production at a time, regenerates the automaton, and retains the removal only
+while the same conflict kind, lookahead, and action/production signature remain.
+The result is therefore a standalone reproducing `Grammar`, not merely a list
+of apparently relevant rules.
+
+### Benchmark and stress instrumentation
+
+`LRBenchmarkHarness.measure` runs selected algorithms and records generation
+duration, state count, transition count, and conflict count for each iteration.
+It intentionally does not embed timing thresholds: CI callers can compare JSON
+reports to platform-specific baselines without making unit tests depend on
+machine speed. The tests exercise structural assertions; LR-Parsing's grammar
+fuzzer continues to supply randomized generation and identity invariants.
+
+### Incremental parsing prototype
+
+`IncrementalLRSession` retains the previous source and traced result. It reports
+the common UTF-16 prefix and suffix, the invalidated range, and the number of
+trace checkpoints preceding the edit. An unchanged source reuses its previous
+result. Edited input is currently parsed normally and fully validated; the
+metrics expose where a future resumable LR engine can restart without claiming
+subtree or stack reuse that has not occurred yet.
+
+### Language-server façade
+
+`GrammarLanguageServer` maps editor operations onto the same document service:
+
+- `didOpen`, incremental/full `didChange`, and `didClose`;
+- grammar diagnostics;
+- nonterminal completion and definition lookup;
+- the custom versioned artifact response used by rich visual clients.
+
+Positions use the Language Server Protocol's zero-based UTF-16 line/character
+convention. The façade is transport-neutral: JSON-RPC headers, process lifetime,
+and diagnostic publication are left to a small host executable or editor
+extension. This keeps protocol framing separate from grammar semantics and
+makes the service directly testable.
 
 ## Architecture and inner workings
 

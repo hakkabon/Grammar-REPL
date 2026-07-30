@@ -250,3 +250,98 @@ struct AnalysisTests {
         #expect(GrammarAnalysis(grammar: grammar).llConflicts.isEmpty)
     }
 }
+
+@Suite("Workbench artifact serialization")
+struct SerializationTests {
+    @Test func roundTripsVersionedStableArtifact() throws {
+        let grammar = try Grammar(bnf: "<S> ::= \"a\"", start: "S")
+        let automaton = LRParser(grammar: grammar, algorithm: .lalr).generate()
+        let envelope = WorkbenchArtifactEnvelope(sourceRevision: 7, grammar: grammar, analysis: GrammarAnalysis(grammar: grammar), automaton: automaton, generatedAt: Date(timeIntervalSince1970: 0))
+        let data = try envelope.json()
+        let decoded = try WorkbenchArtifactEnvelope.decode(data)
+        #expect(decoded == envelope)
+        #expect(decoded.schemaVersion == 1)
+        #expect(decoded.lr?.states.first?.id.hasPrefix("state:") == true)
+        #expect(String(decoding: data, as: UTF8.self).contains("\"schemaVersion\" : 1"))
+    }
+}
+
+@Suite("Embedded grammar directives")
+struct DirectiveTests {
+    @Test func declarationsAreRemovedAndResolveConflicts() throws {
+        let source = "%left \"+\"\n%E ::= deliberately invalid"
+        #expect(throws: GrammarDirectiveError.self) { try GrammarDirectiveParser.parse(source) }
+
+        let valid = "%left \"+\"\n<E> ::= <E> \"+\" <E> | \"id\""
+        let (grammar, directives) = try WorkbenchSourceLoader.load(valid, configuration: .init(notation: .bnf, start: "E"))
+        let artifact = LRParser(grammar: grammar, algorithm: .lalr, precedence: directives.precedence).generate()
+        #expect(directives.precedence.levels.count == 1)
+        #expect(artifact.unresolvedConflicts.isEmpty)
+        #expect(artifact.resolvedConflicts.count == 1)
+    }
+}
+
+@Suite("Conflict minimization and performance harness")
+struct WorkbenchAnalysisToolTests {
+    @Test func minimizedWitnessStillReachesConflict() throws {
+        let grammar = try Grammar(bnf: "<E> ::= <E> \"+\" <E> | \"id\"\n<Unused> ::= \"unused\"", start: "E")
+        let automaton = LRParser(grammar: grammar, algorithm: .lalr).generate()
+        let conflict = try #require(automaton.allConflicts.first)
+        let result = LRConflictMinimizer.minimize(conflict, in: automaton)
+        let probe = LRConflict(kind: conflict.kind, state: conflict.state, lookahead: conflict.lookahead, actions: conflict.actions, witness: result.minimizedWitness, identity: conflict.identity, candidates: conflict.candidates, decision: conflict.decision)
+        #expect(result.minimizedWitness.count <= result.originalWitness.count)
+        #expect(automaton.replay(probe).reachedConflict)
+        #expect(!result.relevantProductions.isEmpty)
+
+        let reduced = LRConflictMinimizer.minimizeGrammar(reproducing: conflict, grammar: grammar, algorithm: .lalr)
+        #expect(reduced.grammar.productions.count < grammar.productions.count)
+        #expect(reduced.removedProductionIDs.contains { $0.rawValue.contains("Unused") })
+        #expect(!LRParser(grammar: reduced.grammar, algorithm: .lalr).generate().allConflicts.isEmpty)
+    }
+
+    @Test func benchmarkRecordsStructuralAndTimingObservations() throws {
+        let grammar = try Grammar(bnf: "<S> ::= \"a\" <S> | \"b\"", start: "S")
+        let report = LRBenchmarkHarness.measure(grammar: grammar, iterations: 1)
+        #expect(report.samples.count == LRParser.Algorithm.allCases.count)
+        #expect(report.maximumStateCount > 0)
+        #expect(report.samples.allSatisfy { $0.transitionCount > 0 })
+    }
+}
+
+@Suite("Incremental parsing prototype")
+struct IncrementalParsingTests {
+    @Test func reportsInvalidationAndCachesUnchangedParse() throws {
+        let grammar = try Grammar(bnf: "<E> ::= <E> \"+\" \"id\" | \"id\"", start: "E")
+        var session = IncrementalLRSession(grammar: grammar)
+        let first = try session.parse("id + id")
+        let unchanged = try session.parse("id + id")
+        let edited = try session.parse("id + id + id")
+        #expect(first.metrics.performedFullValidation)
+        #expect(!unchanged.metrics.performedFullValidation)
+        #expect(unchanged.metrics.invalidatedUTF16.length == 0)
+        #expect(edited.metrics.commonPrefixUTF16 > 0)
+        #expect(edited.metrics.performedFullValidation)
+        #expect(edited.outcome.tree != nil)
+    }
+}
+
+@Suite("Editor and language service")
+struct LanguageServiceTests {
+    @Test func documentLifecycleProducesRevisionedArtifactsAndNavigation() throws {
+        let uri = URL(string: "file:///workspace/expression.bnf")!
+        let source = "%left \"+\"\n<E> ::= <E> \"+\" <E> | \"id\""
+        let server = GrammarLanguageServer()
+        let opened = server.didOpen(uri: uri, text: source, version: 1, configuration: .init(notation: .bnf, start: "E"))
+        #expect(opened.artifact?.sourceRevision == 1)
+        #expect(opened.artifact?.lr?.conflicts.first?.status == "resolved")
+        #expect(try server.completion(uri: uri, prefix: "E").map(\.label) == ["E"])
+        #expect(try server.definition(uri: uri, nonterminal: "E") != nil)
+
+        let changed = try server.didChange(uri: uri, version: 2, changes: [.init(text: "<S> ::= \"a\"")])
+        #expect(changed.revision == 2)
+        #expect(changed.artifact == nil) // BNF start E no longer exists.
+        #expect(try server.diagnostics(uri: uri).contains { $0.severity == .error })
+        server.didClose(uri: uri)
+        #expect(throws: WorkbenchServiceError.self) { try server.artifact(uri: uri) }
+    }
+}

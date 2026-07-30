@@ -8,6 +8,17 @@ public struct LoadedGrammar {
     public let notation: REPLNotation
     public let start: String?
     public let grammar: Grammar
+    public let source: String?
+    public let directives: GrammarDirectiveSet
+
+    public init(url: URL, notation: REPLNotation, start: String?, grammar: Grammar, source: String? = nil, directives: GrammarDirectiveSet = .init()) {
+        self.url = url
+        self.notation = notation
+        self.start = start
+        self.grammar = grammar
+        self.source = source
+        self.directives = directives
+    }
 }
 
 public struct REPLSession {
@@ -30,7 +41,7 @@ public struct REPLSession {
     public mutating func load(_ grammar: LoadedGrammar) {
         loaded = grammar
         analysis = GrammarAnalysis(grammar: grammar.grammar)
-        precedenceLevels = []
+        precedenceLevels = grammar.directives.precedence.levels
         resolutionPolicy = nil
         invalidateDerivedState(clearInput: true)
     }
