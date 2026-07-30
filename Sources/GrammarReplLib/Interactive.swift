@@ -1,3 +1,11 @@
+//
+//  Interactive.swift
+//  Grammar-REPL
+//
+//  Created by Ulf Akerstedt-Inoue on 2026/07/66.
+//  Copyright © 2026 hakkabon software. All rights reserved.
+//
+
 import Foundation
 
 /// Bounded, duplicate-collapsing command history independent of any terminal UI.

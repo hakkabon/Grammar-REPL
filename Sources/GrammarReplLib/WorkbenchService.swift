@@ -1,3 +1,11 @@
+//
+//  WorkbenchService.swift
+//  Grammar-REPL
+//
+//  Created by Ulf Akerstedt-Inoue on 2026/07/66.
+//  Copyright © 2026 hakkabon software. All rights reserved.
+//
+
 import Foundation
 import Grammar
 import Parser
@@ -87,7 +95,12 @@ public enum WorkbenchServiceError: Error, CustomStringConvertible {
 /// neutral: an LSP server, web view bridge, or native workbench can all map
 /// their document lifecycle onto this API.
 public final class GrammarWorkbenchService {
-    private struct Document { var source: String; var revision: Int; var configuration: GrammarDocumentConfiguration; var snapshot: WorkbenchDocumentSnapshot }
+    private struct Document {
+        var source: String
+        var revision: Int
+        var configuration: GrammarDocumentConfiguration
+        var snapshot: WorkbenchDocumentSnapshot
+    }
     private var documents: [URL: Document] = [:]
 
     public init() {}
@@ -155,5 +168,9 @@ public final class GrammarWorkbenchService {
 }
 
 private extension Array where Element: Hashable {
-    func uniqued() -> [Element] { var seen: Set<Element> = []; return filter { seen.insert($0).inserted } }
+    func uniqued() -> [Element] {
+        var seen: Set<Element> = []
+        return filter { seen.insert($0).inserted
+        }
+    }
 }

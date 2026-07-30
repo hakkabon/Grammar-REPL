@@ -1,3 +1,11 @@
+//
+//  LanguageServer.swift
+//  Grammar-REPL
+//
+//  Created by Ulf Akerstedt-Inoue on 2026/07/66.
+//  Copyright © 2026 hakkabon software. All rights reserved.
+//
+
 import Foundation
 
 /// Minimal Language Server Protocol-shaped façade. Transport framing remains
@@ -45,12 +53,41 @@ public final class GrammarLanguageServer {
             let value = cursor + position.character
             return value <= ns.length ? value : nil
         }
-        guard let start = offset(range.start), let end = offset(range.end), end >= start else { throw WorkbenchServiceError.invalidEdit(.init(location: 0, length: 0)) }
+        guard let start = offset(range.start), let end = offset(range.end), end >= start else {
+            throw WorkbenchServiceError.invalidEdit(.init(location: 0, length: 0))
+        }
         return .init(location: start, length: end - start)
     }
 }
 
-public struct GrammarLSPPosition: Codable, Equatable, Sendable { public let line: Int; public let character: Int; public init(line: Int, character: Int) { self.line = line; self.character = character } }
-public struct GrammarLSPRange: Codable, Equatable, Sendable { public let start: GrammarLSPPosition; public let end: GrammarLSPPosition; public init(start: GrammarLSPPosition, end: GrammarLSPPosition) { self.start = start; self.end = end } }
-public struct GrammarTextDocumentChange: Codable, Equatable, Sendable { public let range: GrammarLSPRange?; public let text: String; public init(range: GrammarLSPRange? = nil, text: String) { self.range = range; self.text = text } }
-public struct GrammarCompletionItem: Codable, Equatable, Sendable { public let label: String; public let kind: String }
+public struct GrammarLSPPosition: Codable, Equatable, Sendable {
+    public let line: Int;
+    public let character: Int;
+    public init(line: Int, character: Int) {
+        self.line = line
+        self.character = character
+    }
+}
+
+public struct GrammarLSPRange: Codable, Equatable, Sendable {
+    public let start: GrammarLSPPosition
+    public let end: GrammarLSPPosition
+    public init(start: GrammarLSPPosition, end: GrammarLSPPosition) {
+        self.start = start
+        self.end = end
+    }
+}
+
+public struct GrammarTextDocumentChange: Codable, Equatable, Sendable {
+    public let range: GrammarLSPRange?
+    public let text: String
+    public init(range: GrammarLSPRange? = nil, text: String) {
+        self.range = range
+        self.text = text
+    }
+}
+
+public struct GrammarCompletionItem: Codable, Equatable, Sendable {
+    public let label: String
+    public let kind: String
+}

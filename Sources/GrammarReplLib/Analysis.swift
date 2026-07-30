@@ -49,7 +49,9 @@ public struct GrammarAnalysis {
     private static func predict(_ production: Production, first: [Symbol: Set<Symbol>], follow: [NonTerminal: Set<Symbol>], grammar: Grammar) -> Set<Symbol> {
         var result = grammar.first(of: production.rule, using: first)
         let epsilon = Symbol.terminal(.meta(grammar.epsilon))
-        if result.remove(epsilon) != nil || production.rule.isEmpty { result.formUnion(follow[production.goal] ?? []) }
+        if result.remove(epsilon) != nil || production.rule.isEmpty {
+            result.formUnion(follow[production.goal] ?? [])
+        }
         return result
     }
 }
