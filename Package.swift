@@ -19,7 +19,7 @@ let package = Package(
         .package(url: "https://github.com/hakkabon/Earley-Parser.git", .upToNextMinor(from: "0.1.0")),
         .package(url: "https://github.com/hakkabon/CYK-Parser.git", .upToNextMinor(from: "0.1.0")),
         .package(url: "https://github.com/hakkabon/RNGLR-Parser.git", .upToNextMinor(from: "0.1.0")),
-        .package(url: "https://github.com/hakkabon/LR-Parsing.git", .upToNextMinor(from: "0.1.0")),
+        .package(url: "https://github.com/hakkabon/LR-Parsing.git", .upToNextMinor(from: "0.1.2")),
         .package(url: "https://github.com/hakkabon/GrammarDiagram.git", .upToNextMinor(from: "0.1.0")),
     ],
     targets: [
