@@ -4,6 +4,53 @@ import Grammar
 import LR_Parsing
 @testable import GrammarReplLib
 
+@Suite("Ecosystem corpus conformance")
+struct EcosystemCorpusConformanceTests {
+    @Test func evaluatesAcceptedRejectedAndRecoveredNormalizedInput() throws {
+        let corpus = """
+        {
+          "schemaVersion": 1,
+          "grammars": [{
+            "id": "list",
+            "start": "List",
+            "terminals": ["OPEN", "VALUE", "COMMA", "CLOSE"],
+            "precedence": [],
+            "productions": [
+              {"lhs": "List", "rhs": ["OPEN", "Items", "CLOSE"]},
+              {"lhs": "Items", "rhs": ["VALUE"]}
+            ]
+          }],
+          "cases": [
+            {"id": "accepted", "grammar": "list", "input": "[1]", "expectedTokenKinds": ["OPEN", "VALUE", "CLOSE"], "expectedStatus": "accepted", "tags": ["literal"]},
+            {"id": "rejected", "grammar": "list", "input": "?", "expectedTokenKinds": ["UNKNOWN"], "expectedStatus": "rejected", "tags": ["malformed-input"]},
+            {"id": "recovered", "grammar": "list", "input": "[1,]", "expectedTokenKinds": ["OPEN", "VALUE", "COMMA", "CLOSE"], "expectedStatus": "acceptedWithRecovery", "tags": ["recovery"]}
+          ]
+        }
+        """
+
+        let observations = try GrammarREPLCorpusConformance.evaluate(Data(corpus.utf8))
+        #expect(observations.map(\.id) == ["accepted", "rejected", "recovered"])
+        #expect(observations[0].status == "accepted")
+        #expect(observations[1].status == "rejected")
+        #expect(observations[2].status == "acceptedWithRecovery")
+        #expect(observations[2].diagnostics > 0)
+        #expect(observations[2].recoveryEdits > 0)
+    }
+
+    @Test func rejectsUnknownGrammarReferences() {
+        let corpus = """
+        {
+          "schemaVersion": 1,
+          "grammars": [],
+          "cases": [{"id": "case", "grammar": "missing", "input": "", "expectedTokenKinds": [], "expectedStatus": "accepted", "tags": ["epsilon"]}]
+        }
+        """
+        #expect(throws: (any Error).self) {
+            _ = try GrammarREPLCorpusConformance.evaluate(Data(corpus.utf8))
+        }
+    }
+}
+
 @Suite("Command decoding")
 struct CommandTests {
     @Test func decodesLRCommands() {

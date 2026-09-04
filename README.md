@@ -640,6 +640,12 @@ Grammar analysis or parser package
 text renderer and retained REPLSession state
 ```
 
+The separate `grammar-repl-conformance` executable is a non-terminal adapter
+for the shared ecosystem corpus. Its decoding, normalized-token LR execution,
+bounded recovery, and structured observations live in `GrammarReplLib`;
+readline, command history, and formatted terminal output are not part of the
+conformance result.
+
 ### Command decoding
 
 `REPLCommand` is an enum containing one case for every supported operation.

@@ -8,12 +8,14 @@ let package = Package(
     platforms: [.macOS(.v13), .iOS(.v14)],
     products: [
         .executable(name: "grammar-repl", targets: ["grammar-repl"]),
+        .executable(name: "grammar-repl-conformance", targets: ["grammar-repl-conformance"]),
         .library(name: "GrammarReplLib", targets: ["GrammarReplLib"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.6.2"),
         .package(url: "https://github.com/hakkabon/Grammar.git", .upToNextMinor(from: "0.2.0")),
         .package(url: "https://github.com/hakkabon/Parser.git", .upToNextMinor(from: "0.2.0")),
+        .package(url: "https://github.com/hakkabon/Lexer.git", .upToNextMinor(from: "0.1.0")),
         .package(url: "https://github.com/hakkabon/Earley-Parser.git", .upToNextMinor(from: "0.1.0")),
         .package(url: "https://github.com/hakkabon/CYK-Parser.git", .upToNextMinor(from: "0.1.0")),
         .package(url: "https://github.com/hakkabon/RNGLR-Parser.git", .upToNextMinor(from: "0.1.0")),
@@ -26,6 +28,7 @@ let package = Package(
             dependencies: [
                 .product(name: "Grammar", package: "Grammar"),
                 .product(name: "Parser", package: "Parser"),
+                .product(name: "Lexer", package: "Lexer"),
                 .product(name: "Earley-Parser", package: "Earley-Parser"),
                 .product(name: "CYK-Parser", package: "CYK-Parser"),
                 .product(name: "RNGLR-Parser", package: "RNGLR-Parser"),
@@ -42,6 +45,11 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
             path: "Sources/CLI"
+        ),
+        .executableTarget(
+            name: "grammar-repl-conformance",
+            dependencies: ["GrammarReplLib"],
+            path: "Sources/Conformance"
         ),
         .systemLibrary(
             name: "CReadline",
