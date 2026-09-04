@@ -9,15 +9,15 @@ struct EcosystemCorpusConformanceTests {
     @Test func evaluatesAcceptedRejectedAndRecoveredNormalizedInput() throws {
         let corpus = """
         {
-          "schemaVersion": 1,
+          "schemaVersion": 2,
           "grammars": [{
             "id": "list",
             "start": "List",
             "terminals": ["OPEN", "VALUE", "COMMA", "CLOSE"],
             "precedence": [],
             "productions": [
-              {"lhs": "List", "rhs": ["OPEN", "Items", "CLOSE"]},
-              {"lhs": "Items", "rhs": ["VALUE"]}
+              {"id": "list-root", "lhs": "List", "rhs": ["OPEN", "Items", "CLOSE"]},
+              {"id": "list-item", "lhs": "Items", "rhs": ["VALUE"]}
             ]
           }],
           "cases": [
@@ -31,7 +31,9 @@ struct EcosystemCorpusConformanceTests {
         let observations = try GrammarREPLCorpusConformance.evaluate(Data(corpus.utf8))
         #expect(observations.map(\.id) == ["accepted", "rejected", "recovered"])
         #expect(observations[0].status == "accepted")
+        #expect(observations[0].root == "List")
         #expect(observations[1].status == "rejected")
+        #expect(observations[1].root == nil)
         #expect(observations[2].status == "acceptedWithRecovery")
         #expect(observations[2].diagnostics > 0)
         #expect(observations[2].recoveryEdits > 0)

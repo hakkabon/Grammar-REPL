@@ -7,12 +7,14 @@ import Parser
 public struct GrammarREPLCorpusObservation: Codable, Equatable, Sendable {
     public let id: String
     public let status: String
+    public let root: String?
     public let diagnostics: Int
     public let recoveryEdits: Int
 
-    public init(id: String, status: String, diagnostics: Int, recoveryEdits: Int) {
+    public init(id: String, status: String, root: String? = nil, diagnostics: Int, recoveryEdits: Int) {
         self.id = id
         self.status = status
+        self.root = root
         self.diagnostics = diagnostics
         self.recoveryEdits = recoveryEdits
     }
@@ -24,7 +26,7 @@ public struct GrammarREPLCorpusObservation: Codable, Equatable, Sendable {
 public enum GrammarREPLCorpusConformance {
     public static func evaluate(_ data: Data) throws -> [GrammarREPLCorpusObservation] {
         let corpus = try JSONDecoder().decode(Corpus.self, from: data)
-        guard corpus.schemaVersion == 1 else {
+        guard (1...2).contains(corpus.schemaVersion) else {
             throw CorpusConformanceError("unsupported corpus schema version \(corpus.schemaVersion)")
         }
 
@@ -57,6 +59,7 @@ public enum GrammarREPLCorpusConformance {
                 return GrammarREPLCorpusObservation(
                     id: testCase.id,
                     status: normalizedStatus(result.status),
+                    root: result.tree?.root?.name,
                     diagnostics: result.diagnostics.count,
                     recoveryEdits: result.recoveryEdits.count
                 )
@@ -64,6 +67,7 @@ public enum GrammarREPLCorpusConformance {
                 return GrammarREPLCorpusObservation(
                     id: testCase.id,
                     status: "rejected",
+                    root: nil,
                     diagnostics: 1,
                     recoveryEdits: 0
                 )

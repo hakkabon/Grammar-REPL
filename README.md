@@ -642,7 +642,8 @@ text renderer and retained REPLSession state
 
 The separate `grammar-repl-conformance` executable is a non-terminal adapter
 for the shared ecosystem corpus. Its decoding, normalized-token LR execution,
-bounded recovery, and structured observations live in `GrammarReplLib`;
+bounded recovery, and structured observations live in `GrammarReplLib`. Corpus
+versions 1 and 2 are accepted, with version 2 adding normalized tree roots;
 readline, command history, and formatted terminal output are not part of the
 conformance result.
 
