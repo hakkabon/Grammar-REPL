@@ -48,6 +48,15 @@ edit grammar
 :tree
 ```
 
+Or run the same input through every engine and inspect their portable results:
+
+```text
+:compare sample input
+:forest earley
+:playback lalr
+:contract rnglr
+```
+
 The long-term goal is a grammar laboratory in which deterministic and
 generalized parsing algorithms can be compared through a common interaction
 model. The present implementation establishes that interaction model using the
@@ -75,6 +84,9 @@ The prototype currently supports:
 - opt-in structured LR parser tracing with shift, reduce, error, recovery, and
   acceptance events;
 - parsing sample input without leaving the session;
+- comparing acceptance and concrete-tree agreement across all seven engines;
+- exploring portable packed forests from Earley, CYK, and RNGLR;
+- replaying semantic parse events and exporting each engine's JSON contract;
 - retaining every derivation returned by the selected parser;
 - displaying a selected parse tree with source lexemes at its leaves;
 - showing the current session settings;
@@ -444,6 +456,20 @@ case .rnglr:
 This is intentionally a thin adapter. Tokenization, recognition, forest
 construction, and tree enumeration remain responsibilities of their respective
 packages.
+
+### `:compare [input]`, `:forest [parser]`, `:playback [parser] [limit]`, and `:contract [parser]`
+
+`:compare` runs the same grammar and input through Earley, CYK, RNGLR, LR(0),
+SLR, LALR, and canonical LR(1). It reports acceptance, tree count, forest size,
+ambiguity, and whether the engines agree completely, on acceptance only, or
+diverge. With no argument it reuses the last input.
+
+The other commands inspect one result from the most recent comparison, defaulting
+to the selected parser. `:forest` lists portable SPPF nodes, `:playback` renders
+portable semantic events, and `:contract` emits the schema-versioned JSON result.
+LR playback is projected from its runtime trace. Generalized-parser playback is
+a deterministic traversal of the completed forest and deliberately does not
+claim to reproduce an engine's internal execution order.
 
 ### `:tree [number]`
 

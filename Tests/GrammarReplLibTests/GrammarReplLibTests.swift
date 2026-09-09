@@ -76,6 +76,56 @@ struct CommandTests {
     @Test func decodesQuotedLoadAndPlainInput() {
         #expect(REPLCommand.decode(":load \"a path/g.bnf\" S") == .load(path: "a path/g.bnf", start: "S"))
         #expect(REPLCommand.decode("id + id") == .parse("id + id"))
+        #expect(REPLCommand.decode(":compare \"a b\"") == .compare("a b"))
+        #expect(REPLCommand.decode(":compare") == .compare(nil))
+        #expect(REPLCommand.decode(":forest rnglr") == .forest(.rnglr))
+        #expect(REPLCommand.decode(":playback lr1 12") == .playback(parser: .lr1, limit: 12))
+        #expect(REPLCommand.decode(":playback 12") == .playback(parser: nil, limit: 12))
+        #expect(REPLCommand.decode(":contract cyk") == .contract(.cyk))
+    }
+}
+
+@Suite("Parser experiments")
+struct ParserExperimentTests {
+    @Test func comparesEveryEngineWithPortableArtifacts() throws {
+        let grammar = try Grammar(bnf: "<S> ::= \"a\"", start: "S")
+        let comparison = REPLParserExperiment.compare(grammar: grammar, input: "a")
+
+        #expect(comparison.runs.map(\.parser) == REPLParser.allCases)
+        #expect(comparison.runs.allSatisfy { $0.contract.status == .accepted })
+        #expect(comparison.agreement == .complete)
+        for parser in [REPLParser.earley, .cyk, .rnglr] {
+            let run = try #require(comparison.run(for: parser))
+            #expect(run.contract.forest != nil)
+            #expect(run.contract.forest?.nodes.contains { $0.productionID != nil } == true)
+            #expect(run.contract.replay.last?.kind == .accept)
+        }
+        #expect(comparison.run(for: .lalr)?.contract.replay.contains { $0.kind == .applyProduction } == true)
+    }
+
+    @Test func commandsExposeForestReplayAndJSONContract() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grammar-repl-experiment-\(UUID().uuidString).bnf")
+        try "<S> ::= \"a\"".write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        var output: [String] = []
+        let repl = GrammarREPL(output: { output.append($0) })
+        repl.execute(.load(path: url.path, start: "S"))
+        repl.execute(.compare("a"))
+        repl.execute(.forest(.earley))
+        repl.execute(.playback(parser: .lalr, limit: 4))
+        repl.execute(.contract(.cyk))
+
+        let text = output.joined(separator: "\n")
+        #expect(text.contains("Agreement: complete."))
+        #expect(text.contains("earley forest:"))
+        #expect(text.contains("lalr replay (first 4):"))
+        #expect(text.contains("\"schemaVersion\" : 1"))
+        #expect(repl.session.lastComparison != nil)
+
+        repl.execute(.parser(.rnglr))
+        #expect(!repl.session.lastTrees.isEmpty)
     }
 }
 

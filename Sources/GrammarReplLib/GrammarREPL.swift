@@ -61,6 +61,10 @@ public final class GrammarREPL {
             case .predict(let name): try showPredict(name)
             case .parse(let input): try parseInput(input)
             case .tree(let index): try showTree(index)
+            case .compare(let input): try compareInput(input)
+            case .forest(let parser): try showForest(parser)
+            case .playback(let parser, let limit): try showPlayback(parser, limit: limit)
+            case .contract(let parser): try showContract(parser)
             case .settings: showSettings()
             case .history:
                 for (index, line) in history.entries.enumerated() { output("\(index + 1)  \(line)") }
@@ -277,8 +281,80 @@ public final class GrammarREPL {
         output(renderTree(session.lastTrees[index], in: input))
     }
 
+    private func compareInput(_ requested: String?) throws {
+        let input = requested ?? session.lastInput
+        guard let input else {
+            throw Message("Provide input after :compare or parse input first.")
+        }
+        let comparison = REPLParserExperiment.compare(
+            grammar: try grammar(), input: input,
+            precedence: session.precedence, resolutionPolicy: session.resolutionPolicy
+        )
+        session.storeComparison(comparison)
+        for run in comparison.runs {
+            let forest = run.contract.forest
+            let forestSummary = forest.map {
+                let ambiguity = $0.isAmbiguous ? "yes" : "no"
+                return "nodes=\($0.nodes.count), ambiguous=\(ambiguity)"
+            } ?? "forest=none"
+            output("\(run.parser.rawValue): \(run.contract.status.rawValue), trees=\(run.trees.count), \(forestSummary), replay=\(run.contract.replay.count)")
+            if let failure = run.failure { output("  \(failure)") }
+        }
+        output("Agreement: \(comparison.agreement.rawValue).")
+    }
+
+    private func experimentRun(for requested: REPLParser?) throws -> REPLParserRun {
+        guard let comparison = session.lastComparison else {
+            throw Message("No engine comparison is available. Use :compare <input> first.")
+        }
+        let parser = requested ?? session.parser
+        guard let run = comparison.run(for: parser) else {
+            throw Message("No comparison result is available for \(parser.rawValue).")
+        }
+        return run
+    }
+
+    private func showForest(_ requested: REPLParser?) throws {
+        let run = try experimentRun(for: requested)
+        guard let forest = run.contract.forest else {
+            throw Message("\(run.parser.rawValue) did not produce a packed forest.")
+        }
+        output("\(run.parser.rawValue) forest: \(forest.nodes.count) nodes, \(forest.edges.count) edges, \(forest.roots.count) root(s), \(forest.ambiguityNodes.count) ambiguity node(s).")
+        for node in forest.nodes.prefix(50) {
+            let ambiguous = forest.ambiguityNodes.contains(node.id) ? " [ambiguous]" : ""
+            let label = node.productionID?.rawValue ?? node.label ?? ""
+            let position = node.position.map { " @\($0)" } ?? ""
+            let suffix = label.isEmpty ? "" : "  \(label)"
+            output("\(node.id)  \(node.kind.rawValue) [\(node.leftExtent), \(node.rightExtent))\(position)\(ambiguous)\(suffix)")
+        }
+        if forest.nodes.count > 50 { output("… \(forest.nodes.count - 50) more node(s).") }
+    }
+
+    private func showPlayback(_ requested: REPLParser?, limit: Int?) throws {
+        let run = try experimentRun(for: requested)
+        let events = limit.map { Array(run.contract.replay.prefix(max(0, $0))) } ?? run.contract.replay
+        guard !events.isEmpty else { throw Message("No portable replay is available for \(run.parser.rawValue).") }
+        output("\(run.parser.rawValue) replay\(limit.map { " (first \($0))" } ?? ""):")
+        for event in events {
+            var details: [String] = []
+            if let token = event.tokenIndex { details.append("token=\(token)") }
+            if let production = event.productionID { details.append("production=\(production.rawValue)") }
+            if let node = event.forestNodeID { details.append("node=\(node)") }
+            if let reason = event.diagnosticReason { details.append("reason=\(reason.rawValue)") }
+            let suffix = details.isEmpty ? "" : "  \(details.joined(separator: ", "))"
+            output("[\(event.step)] \(event.kind.rawValue)\(suffix)")
+        }
+    }
+
+    private func showContract(_ requested: REPLParser?) throws {
+        let run = try experimentRun(for: requested)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        output(String(decoding: try encoder.encode(run.contract), as: UTF8.self))
+    }
+
     private func showSettings() {
-        output("Grammar: \(session.loaded?.url.path ?? "none")\nParser: \(session.parser.rawValue)\nLast input: \(session.lastInput ?? "none")\nLR artifact: \(session.automaton.map { "\($0.states.count) states" } ?? "not generated")\nPrecedence levels: \(session.precedenceLevels.count)\nResolution policy: \(session.resolutionPolicy?.rawValue ?? "none")\nTracing: \(session.traceEnabled ? "on" : "off")")
+        output("Grammar: \(session.loaded?.url.path ?? "none")\nParser: \(session.parser.rawValue)\nLast input: \(session.lastInput ?? "none")\nComparison: \(session.lastComparison?.agreement.rawValue ?? "none")\nLR artifact: \(session.automaton.map { "\($0.states.count) states" } ?? "not generated")\nPrecedence levels: \(session.precedenceLevels.count)\nResolution policy: \(session.resolutionPolicy?.rawValue ?? "none")\nTracing: \(session.traceEnabled ? "on" : "off")")
     }
 
     private func showTrace(_ rawArgument: String?) {
@@ -465,6 +541,10 @@ public final class GrammarREPL {
       :first/:follow/:predict <nonterminal>
       :parse <input>         Parse; LR modes use bounded local repair
       :tree [number]         Show the last parse tree
+      :compare [input]       Run every parser against the same input
+      :forest [parser]       Explore a compared parser's portable forest
+      :playback [parser] [n] Replay portable semantic parse events
+      :contract [parser]     Print a parser's portable contract as JSON
       :trace [option]        Enable/disable/show/clear LR runtime tracing
       :identity <kind> <n>   Show a stable state/conflict/production ID
       :diagram <artifact>    Render grammar/rule/automaton/state/tree

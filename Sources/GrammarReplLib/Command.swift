@@ -9,7 +9,7 @@
 import Foundation
 import LR_Parsing
 
-public enum REPLParser: String, CaseIterable, Equatable, Sendable {
+public enum REPLParser: String, CaseIterable, Codable, Hashable, Sendable {
     case earley, cyk, rnglr, lr0, slr, lalr, lr1
 
     public var lrAlgorithm: LRParser.Algorithm? {
@@ -31,6 +31,8 @@ public enum REPLCommand: Equatable {
     case parser(REPLParser?)
     case first(String), follow(String), predict(String), parse(String)
     case tree(Int?), state(Int?), explain(Int?), replay(Int?, branches: Bool)
+    case compare(String?), forest(REPLParser?), playback(parser: REPLParser?, limit: Int?)
+    case contract(REPLParser?)
     case diagram(String), export(artifact: String, path: String)
     case trace(String?), identity(String), precedence(String), resolution(String), conflicts(String?), decisions(Int?)
     case unknown(String)
@@ -58,6 +60,14 @@ public enum REPLCommand: Equatable {
         case "follow": return .follow(argument)
         case "predict": return .predict(argument)
         case "parse": return .parse(unquote(argument))
+        case "compare": return .compare(argument.isEmpty ? nil : unquote(argument))
+        case "forest": return .forest(REPLParser(rawValue: argument.lowercased()))
+        case "contract": return .contract(REPLParser(rawValue: argument.lowercased()))
+        case "playback":
+            let words = argument.split(whereSeparator: \.isWhitespace).map(String.init)
+            let parser = words.first.flatMap { REPLParser(rawValue: $0.lowercased()) }
+            let limit = words.dropFirst(parser == nil ? 0 : 1).first.flatMap(Int.init)
+            return .playback(parser: parser, limit: limit)
         case "tree": return .tree(argument.isEmpty ? nil : Int(argument))
         case "state": return .state(argument.isEmpty ? nil : Int(argument))
         case "explain": return .explain(argument.isEmpty ? nil : Int(argument))

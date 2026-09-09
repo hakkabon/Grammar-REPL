@@ -38,6 +38,7 @@ public struct REPLSession {
     public private(set) var automaton: LRAutomaton?
     public private(set) var traceEnabled = false
     public private(set) var lastTrace: [LRParserTraceEvent] = []
+    public private(set) var lastComparison: REPLParserComparison?
     public private(set) var precedenceLevels: [LRPrecedenceLevel] = []
     public private(set) var resolutionPolicy: LRStandardConflictPolicy?
     public var precedence: LRPrecedenceSpecification? {
@@ -57,14 +58,22 @@ public struct REPLSession {
     public mutating func selectParser(_ value: REPLParser) {
         guard value != parser else { return }
         parser = value
-        lastTrees = []
+        lastTrees = lastComparison?.run(for: value)?.trees ?? []
         automaton = nil
-        lastTrace = []
+        lastTrace = lastComparison?.run(for: value)?.lrTrace ?? []
     }
 
     public mutating func storeParse(input: String, trees: [ParseTree]) {
         lastInput = input
         lastTrees = trees
+        lastComparison = nil
+    }
+
+    public mutating func storeComparison(_ value: REPLParserComparison) {
+        lastComparison = value
+        lastInput = value.input
+        lastTrees = value.run(for: parser)?.trees ?? []
+        lastTrace = value.run(for: parser)?.lrTrace ?? []
     }
 
     public mutating func storeAutomaton(_ value: LRAutomaton) { automaton = value }
@@ -91,5 +100,6 @@ public struct REPLSession {
         lastTrees = []
         automaton = nil
         lastTrace = []
+        lastComparison = nil
     }
 }

@@ -29,7 +29,7 @@ public enum CommandCompletion {
     public static let commands = [
         ":help", ":quit", ":load", ":reload", ":grammar", ":parser",
         ":check", ":conflicts", ":decisions", ":state", ":explain", ":replay", ":first", ":follow",
-        ":predict", ":parse", ":tree", ":trace", ":identity", ":precedence", ":resolution", ":diagram", ":export", ":history", ":settings"
+        ":predict", ":parse", ":tree", ":compare", ":forest", ":playback", ":contract", ":trace", ":identity", ":precedence", ":resolution", ":diagram", ":export", ":history", ":settings"
     ]
 
     public static func candidates(for line: String, session: REPLSession) -> [String] {
@@ -40,7 +40,7 @@ public enum CommandCompletion {
         let fragment = parts.last ?? ""
         let values: [String]
         switch command {
-        case ":parser": values = REPLParser.allCases.map(\.rawValue)
+        case ":parser", ":forest", ":playback", ":contract": values = REPLParser.allCases.map(\.rawValue)
         case ":first", ":follow", ":predict": values = session.loaded?.grammar.nonTerminals.map(\.name) ?? []
         case ":state", ":decisions": values = session.automaton?.states.map { String($0.id) } ?? []
         case ":explain", ":replay": values = session.automaton?.allConflicts.indices.map { String($0 + 1) } ?? []
