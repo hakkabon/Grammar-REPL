@@ -51,6 +51,31 @@ struct EcosystemCorpusConformanceTests {
             _ = try GrammarREPLCorpusConformance.evaluate(Data(corpus.utf8))
         }
     }
+
+    @Test func versionThreeReportsEveryEngineForComparisonCases() throws {
+        let corpus = """
+        {
+          "schemaVersion": 3,
+          "engines": [],
+          "grammars": [{
+            "id": "sample", "start": "S", "terminals": ["A"], "precedence": [],
+            "productions": [{"id": "sample-a", "lhs": "S", "rhs": ["A"]}]
+          }],
+          "cases": [{
+            "id": "comparison", "grammar": "sample", "input": "a",
+            "expectedTokenKinds": ["A"], "expectedStatus": "accepted",
+            "tags": ["engine-comparison"]
+          }]
+        }
+        """
+
+        let observation = try #require(
+            GrammarREPLCorpusConformance.evaluate(Data(corpus.utf8)).first
+        )
+        #expect(observation.engines?.map(\.parser) == REPLParser.allCases)
+        #expect(observation.engines?.allSatisfy { $0.status == "accepted" } == true)
+        #expect(observation.engines?.filter { $0.forestNodes != nil }.count == 3)
+    }
 }
 
 @Suite("Command decoding")

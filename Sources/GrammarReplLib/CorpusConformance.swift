@@ -10,14 +10,26 @@ public struct GrammarREPLCorpusObservation: Codable, Equatable, Sendable {
     public let root: String?
     public let diagnostics: Int
     public let recoveryEdits: Int
+    public let engines: [GrammarREPLEngineObservation]?
 
-    public init(id: String, status: String, root: String? = nil, diagnostics: Int, recoveryEdits: Int) {
+    public init(id: String, status: String, root: String? = nil, diagnostics: Int, recoveryEdits: Int, engines: [GrammarREPLEngineObservation]? = nil) {
         self.id = id
         self.status = status
         self.root = root
         self.diagnostics = diagnostics
         self.recoveryEdits = recoveryEdits
+        self.engines = engines
     }
+}
+
+public struct GrammarREPLEngineObservation: Codable, Equatable, Sendable {
+    public let parser: REPLParser
+    public let status: String
+    public let derivations: Int
+    public let forestNodes: Int?
+    public let ambiguous: Bool?
+    public let productionIdentified: Bool
+    public let replayEvents: [String]
 }
 
 /// Non-terminal adapter from the shared ecosystem corpus to Grammar-REPL's
@@ -26,7 +38,7 @@ public struct GrammarREPLCorpusObservation: Codable, Equatable, Sendable {
 public enum GrammarREPLCorpusConformance {
     public static func evaluate(_ data: Data) throws -> [GrammarREPLCorpusObservation] {
         let corpus = try JSONDecoder().decode(Corpus.self, from: data)
-        guard (1...2).contains(corpus.schemaVersion) else {
+        guard (1...3).contains(corpus.schemaVersion) else {
             throw CorpusConformanceError("unsupported corpus schema version \(corpus.schemaVersion)")
         }
 
@@ -51,6 +63,10 @@ public enum GrammarREPLCorpusConformance {
 
             let parser = LRParser(grammar: grammar, algorithm: .lalr, precedence: precedence)
             let stream = NormalizedTokenStream(kinds: testCase.expectedTokenKinds)
+            let engines: [GrammarREPLEngineObservation]? = testCase.tags.contains("engine-comparison")
+                ? comparisonObservations(
+                    grammar: grammar, input: stream.source, precedence: precedence
+                ) : nil
             do {
                 let result = try parser.parseOutcome(
                     stream: stream,
@@ -61,7 +77,8 @@ public enum GrammarREPLCorpusConformance {
                     status: normalizedStatus(result.status),
                     root: result.tree?.root?.name,
                     diagnostics: result.diagnostics.count,
-                    recoveryEdits: result.recoveryEdits.count
+                    recoveryEdits: result.recoveryEdits.count,
+                    engines: engines
                 )
             } catch {
                 return GrammarREPLCorpusObservation(
@@ -69,9 +86,33 @@ public enum GrammarREPLCorpusConformance {
                     status: "rejected",
                     root: nil,
                     diagnostics: 1,
-                    recoveryEdits: 0
+                    recoveryEdits: 0,
+                    engines: engines
                 )
             }
+        }
+    }
+
+    private static func comparisonObservations(
+        grammar: Grammar, input: String, precedence: LRPrecedenceSpecification?
+    ) -> [GrammarREPLEngineObservation] {
+        REPLParserExperiment.compare(
+            grammar: grammar, input: input, precedence: precedence
+        ).runs.map { run in
+            let forest = run.contract.forest
+            let productionNodes = forest?.nodes.filter {
+                $0.kind == .intermediate || $0.kind == .packed
+            } ?? []
+            return GrammarREPLEngineObservation(
+                parser: run.parser,
+                status: normalizedStatus(run.contract.status),
+                derivations: run.trees.count,
+                forestNodes: forest?.nodes.count,
+                ambiguous: forest?.isAmbiguous,
+                productionIdentified: !productionNodes.isEmpty
+                    && productionNodes.allSatisfy { $0.productionID != nil },
+                replayEvents: run.contract.replay.map { $0.kind.rawValue }
+            )
         }
     }
 
@@ -147,6 +188,7 @@ private struct CorpusCase: Decodable {
     let id: String
     let grammar: String
     let expectedTokenKinds: [String]
+    let tags: [String]
 }
 
 private struct NormalizedTokenStream: TokenStream {
