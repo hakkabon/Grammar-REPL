@@ -669,9 +669,15 @@ text renderer and retained REPLSession state
 The separate `grammar-repl-conformance` executable is a non-terminal adapter
 for the shared ecosystem corpus. Its decoding, normalized-token LR execution,
 bounded recovery, and structured observations live in `GrammarReplLib`. Corpus
-versions 1 and 2 are accepted, with version 2 adding normalized tree roots;
-readline, command history, and formatted terminal output are not part of the
-conformance result.
+versions 1 through 3 are accepted. Version 2 adds normalized tree roots and
+version 3 adds seven-engine comparison, production-aware replay, and portable
+forest evidence. Readline, command history, and formatted terminal output are
+not part of the conformance result.
+
+Grammar-REPL 0.3.2 raises its RNGLR floor to 0.2.1 and LR-Parsing floor to
+0.2.2. Its engine-property suite now verifies replay termination, stable
+ordering, forest references and extents, production identity, transition-free
+portable snapshots, and exact Catalan derivation counts across repeated runs.
 
 ### Command decoding
 

@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import Grammar
+import Parser
 import LR_Parsing
 @testable import GrammarReplLib
 
@@ -112,6 +113,110 @@ struct CommandTests {
 
 @Suite("Parser experiments")
 struct ParserExperimentTests {
+    private func checkContractInvariants(_ contract: ParseContractSnapshot) {
+        #expect(!contract.engine.identity.isEmpty)
+        #expect(!contract.engine.algorithm.isEmpty)
+        #expect(contract.replay.map(\.step) == Array(contract.replay.indices))
+        #expect(contract.replay.first?.kind == .start)
+        switch contract.status {
+        case .accepted, .recovered:
+            #expect(contract.replay.last?.kind == .accept)
+        case .rejected:
+            #expect(contract.replay.last?.kind == .reject)
+        }
+
+        guard let forest = contract.forest else { return }
+        let nodeIDs = forest.nodes.map(\.id)
+        let nodeIDSet = Set(nodeIDs)
+        #expect(nodeIDs == nodeIDs.sorted())
+        #expect(nodeIDSet.count == nodeIDs.count)
+        #expect(forest.edges == forest.edges.sorted())
+        #expect(forest.edges.allSatisfy {
+            nodeIDSet.contains($0.parent) && nodeIDSet.contains($0.child)
+        })
+        #expect(forest.roots.allSatisfy(nodeIDSet.contains))
+        #expect(forest.ambiguityNodes.allSatisfy(nodeIDSet.contains))
+
+        for node in forest.nodes {
+            #expect(node.leftExtent >= 0)
+            #expect(node.rightExtent >= node.leftExtent)
+            if let pivot = node.pivot {
+                #expect(pivot >= node.leftExtent && pivot <= node.rightExtent)
+            }
+            switch node.kind {
+            case .token, .symbol:
+                #expect(node.label != nil)
+            case .intermediate, .packed:
+                #expect(node.productionID != nil)
+                #expect(node.position != nil)
+            }
+        }
+
+        for ambiguity in forest.ambiguityNodes {
+            let packedChildren = forest.edges.filter { edge in
+                guard edge.parent == ambiguity,
+                      let child = forest.nodes.first(where: { $0.id == edge.child }) else {
+                    return false
+                }
+                return child.kind == .packed
+            }
+            #expect(packedChildren.count > 1)
+        }
+        #expect(contract.replay.compactMap(\.forestNodeID).allSatisfy(nodeIDSet.contains))
+    }
+
+    @Test func engineContractsRemainTruthfulAcrossRepeatedAmbiguityRuns() throws {
+        let expression = NonTerminal(name: "Expression")
+        let id = Terminal(string: "ID")
+        let plus = Terminal(string: "PLUS")
+        let grammar = Grammar(
+            productions: [
+                Production(goal: expression, rule: [
+                    .nonTerminal(expression), .terminal(plus), .nonTerminal(expression),
+                ]),
+                Production(goal: expression, rule: [.terminal(id)]),
+            ],
+            start: expression,
+            lexicalTokens: [:]
+        )
+        let precedence = LRPrecedenceSpecification(levels: [
+            LRPrecedenceLevel(1, associativity: .left, terminals: [plus])
+        ])
+        let cases = [
+            ("ID PLUS ID PLUS ID", 2),
+            ("ID PLUS ID PLUS ID PLUS ID", 5),
+        ]
+
+        for (input, expectedDerivations) in cases {
+            var baseline: [REPLParser: ParseContractSnapshot] = [:]
+            var baselineFingerprints: [REPLParser: [String]] = [:]
+            for _ in 0..<8 {
+                let comparison = REPLParserExperiment.compare(
+                    grammar: grammar, input: input, precedence: precedence
+                )
+                #expect(comparison.runs.count == REPLParser.allCases.count)
+                for run in comparison.runs {
+                    checkContractInvariants(run.contract)
+                    #expect(run.contract.status == .accepted)
+                    if [.earley, .cyk, .rnglr].contains(run.parser) {
+                        #expect(run.trees.count == expectedDerivations)
+                        #expect(run.contract.isAmbiguous)
+                    } else {
+                        #expect(run.trees.count == 1)
+                        #expect(run.contract.forest == nil)
+                    }
+                    if let expected = baseline[run.parser] {
+                        #expect(run.contract == expected)
+                        #expect(run.treeFingerprints == baselineFingerprints[run.parser])
+                    } else {
+                        baseline[run.parser] = run.contract
+                        baselineFingerprints[run.parser] = run.treeFingerprints
+                    }
+                }
+            }
+        }
+    }
+
     @Test func comparesEveryEngineWithPortableArtifacts() throws {
         let grammar = try Grammar(bnf: "<S> ::= \"a\"", start: "S")
         let comparison = REPLParserExperiment.compare(grammar: grammar, input: "a")

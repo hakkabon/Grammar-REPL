@@ -18,8 +18,8 @@ let package = Package(
         .package(url: "https://github.com/hakkabon/Lexer.git", .upToNextMinor(from: "0.2.0")),
         .package(url: "https://github.com/hakkabon/Earley-Parser.git", .upToNextMinor(from: "0.2.0")),
         .package(url: "https://github.com/hakkabon/CYK-Parser.git", .upToNextMinor(from: "0.2.0")),
-        .package(url: "https://github.com/hakkabon/RNGLR-Parser.git", .upToNextMinor(from: "0.2.0")),
-        .package(url: "https://github.com/hakkabon/LR-Parsing.git", .upToNextMinor(from: "0.2.0")),
+        .package(url: "https://github.com/hakkabon/RNGLR-Parser.git", .upToNextMinor(from: "0.2.1")),
+        .package(url: "https://github.com/hakkabon/LR-Parsing.git", .upToNextMinor(from: "0.2.2")),
         .package(url: "https://github.com/hakkabon/GrammarDiagram.git", .upToNextMinor(from: "0.1.0")),
     ],
     targets: [
@@ -61,6 +61,7 @@ let package = Package(
             dependencies: [
                 "GrammarReplLib",
                 .product(name: "Grammar", package: "Grammar"),
+                .product(name: "Parser", package: "Parser"),
                 .product(name: "LR-Parsing", package: "LR-Parsing"),
             ]
         ),
