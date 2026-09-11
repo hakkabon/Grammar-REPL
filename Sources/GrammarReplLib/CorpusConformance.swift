@@ -30,6 +30,8 @@ public struct GrammarREPLEngineObservation: Codable, Equatable, Sendable {
     public let ambiguous: Bool?
     public let productionIdentified: Bool
     public let replayEvents: [String]
+    public let supported: Bool
+    public let unsupportedReason: String?
 }
 
 /// Non-terminal adapter from the shared ecosystem corpus to Grammar-REPL's
@@ -38,7 +40,7 @@ public struct GrammarREPLEngineObservation: Codable, Equatable, Sendable {
 public enum GrammarREPLCorpusConformance {
     public static func evaluate(_ data: Data) throws -> [GrammarREPLCorpusObservation] {
         let corpus = try JSONDecoder().decode(Corpus.self, from: data)
-        guard (1...3).contains(corpus.schemaVersion) else {
+        guard (1...4).contains(corpus.schemaVersion) else {
             throw CorpusConformanceError("unsupported corpus schema version \(corpus.schemaVersion)")
         }
 
@@ -111,7 +113,9 @@ public enum GrammarREPLCorpusConformance {
                 ambiguous: forest?.isAmbiguous,
                 productionIdentified: !productionNodes.isEmpty
                     && productionNodes.allSatisfy { $0.productionID != nil },
-                replayEvents: run.contract.replay.map { $0.kind.rawValue }
+                replayEvents: run.contract.replay.map { $0.kind.rawValue },
+                supported: run.availability == .supported,
+                unsupportedReason: run.unsupportedReason
             )
         }
     }

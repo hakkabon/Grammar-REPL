@@ -13,6 +13,7 @@ import LR_Parsing
 import RNGLR_Parser
 import CYK_Parser
 import Earley_Parser
+import Earley_TableParser
 
 public final class GrammarREPL {
     public private(set) var session = REPLSession()
@@ -259,8 +260,16 @@ public final class GrammarREPL {
         let trees: [ParseTree]
         switch session.parser {
         case .earley: trees = try EarleyParser(grammar: grammar).allSyntaxTrees(for: input)
+        case .earleySL: trees = try EarleyTableParser(grammar: grammar).allSyntaxTrees(for: input)
+        case .earleyEL: trees = try EarleyTableParser(grammar: grammar, useExtendedLookahead: true).allSyntaxTrees(for: input)
         case .cyk: trees = try CYKParser(grammar: grammar).allSyntaxTrees(for: input)
         case .rnglr: trees = try RNGLRParser(grammar: grammar).allSyntaxTrees(for: input)
+        case .ll1:
+            let run = REPLParserExperiment.run(parser: .ll1, grammar: grammar, input: input)
+            guard run.availability == .supported else {
+                throw Message(run.unsupportedReason ?? "Grammar is outside LL(1).")
+            }
+            trees = run.trees
         case .lr0, .slr, .lalr, .lr1:
             guard let algorithm = session.parser.lrAlgorithm else { throw Message("Missing LR algorithm.") }
             let outcome = try LRParser(grammar: grammar, algorithm: algorithm, precedence: session.precedence, resolutionPolicy: session.resolutionPolicy).parseOutcome(input, recovery: .localRepair(maxEdits: 2), tracing: session.traceEnabled)
@@ -298,7 +307,8 @@ public final class GrammarREPL {
                 return "nodes=\($0.nodes.count), ambiguous=\(ambiguity)"
             } ?? "forest=none"
             output("\(run.parser.rawValue): \(run.contract.status.rawValue), trees=\(run.trees.count), \(forestSummary), replay=\(run.contract.replay.count)")
-            if let failure = run.failure { output("  \(failure)") }
+            if let reason = run.unsupportedReason { output("  unsupported: \(reason)") }
+            else if let failure = run.failure { output("  \(failure)") }
         }
         output("Agreement: \(comparison.agreement.rawValue).")
     }
@@ -529,7 +539,7 @@ public final class GrammarREPL {
     private static let help = """
     Commands:
       :load <file> [start]   Load a grammar
-      :parser [name]         Select earley/cyk/rnglr/lr0/slr/lalr/lr1
+      :parser [name]         Select earley/earley-sl/earley-el/cyk/rnglr/ll1/lr0/slr/lalr/lr1
       :check                 Show LL and selected LR analysis summary
       :conflicts             List structured LL or LR conflicts
       :decisions [state]     Inspect generated ACTION decisions

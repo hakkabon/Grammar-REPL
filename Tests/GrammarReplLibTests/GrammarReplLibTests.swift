@@ -53,10 +53,10 @@ struct EcosystemCorpusConformanceTests {
         }
     }
 
-    @Test func versionThreeReportsEveryEngineForComparisonCases() throws {
+    @Test func versionFourReportsEveryEngineForComparisonCases() throws {
         let corpus = """
         {
-          "schemaVersion": 3,
+          "schemaVersion": 4,
           "engines": [],
           "grammars": [{
             "id": "sample", "start": "S", "terminals": ["A"], "precedence": [],
@@ -75,7 +75,8 @@ struct EcosystemCorpusConformanceTests {
         )
         #expect(observation.engines?.map(\.parser) == REPLParser.allCases)
         #expect(observation.engines?.allSatisfy { $0.status == "accepted" } == true)
-        #expect(observation.engines?.filter { $0.forestNodes != nil }.count == 3)
+        #expect(observation.engines?.filter { $0.forestNodes != nil }.count == 5)
+        #expect(observation.engines?.allSatisfy(\.supported) == true)
     }
 }
 
@@ -90,6 +91,8 @@ struct CommandTests {
         #expect(REPLCommand.decode(":replay 2 all") == .replay(2, branches: true))
         #expect(REPLCommand.decode(":decisions 4") == .decisions(4))
         #expect(REPLCommand.decode(":parser lalr") == .parser(.lalr))
+        #expect(REPLCommand.decode(":parser ll1") == .parser(.ll1))
+        #expect(REPLCommand.decode(":parser earley-el") == .parser(.earleyEL))
         #expect(REPLCommand.decode(":diagram state 3") == .diagram("state 3"))
         #expect(REPLCommand.decode(":export state:3 out.dot") == .export(artifact: "state:3", path: "out.dot"))
         #expect(REPLCommand.decode(":trace on") == .trace("on"))
@@ -197,8 +200,15 @@ struct ParserExperimentTests {
                 #expect(comparison.runs.count == REPLParser.allCases.count)
                 for run in comparison.runs {
                     checkContractInvariants(run.contract)
+                    if run.parser == .ll1 {
+                        #expect(run.availability == .unsupported)
+                        #expect(run.unsupportedReason != nil)
+                        #expect(run.contract.status == .rejected)
+                        continue
+                    }
+                    #expect(run.availability == .supported)
                     #expect(run.contract.status == .accepted)
-                    if [.earley, .cyk, .rnglr].contains(run.parser) {
+                    if [.earley, .earleySL, .earleyEL, .cyk, .rnglr].contains(run.parser) {
                         #expect(run.trees.count == expectedDerivations)
                         #expect(run.contract.isAmbiguous)
                     } else {
@@ -224,13 +234,35 @@ struct ParserExperimentTests {
         #expect(comparison.runs.map(\.parser) == REPLParser.allCases)
         #expect(comparison.runs.allSatisfy { $0.contract.status == .accepted })
         #expect(comparison.agreement == .complete)
-        for parser in [REPLParser.earley, .cyk, .rnglr] {
+        for parser in [REPLParser.earley, .earleySL, .earleyEL, .cyk, .rnglr] {
             let run = try #require(comparison.run(for: parser))
             #expect(run.contract.forest != nil)
             #expect(run.contract.forest?.nodes.contains { $0.productionID != nil } == true)
             #expect(run.contract.replay.last?.kind == .accept)
         }
         #expect(comparison.run(for: .lalr)?.contract.replay.contains { $0.kind == .applyProduction } == true)
+        #expect(comparison.run(for: .ll1)?.availability == .supported)
+        #expect(comparison.run(for: .ll1)?.contract.replay.contains { $0.kind == .consume } == true)
+    }
+
+    @Test func llCapabilityIsExplicitForUnsupportedGrammars() {
+        let expression = NonTerminal(name: "Expression")
+        let grammar = Grammar(
+            productions: [
+                Production(goal: expression, rule: [
+                    .nonTerminal(expression), .terminal(Terminal(string: "PLUS")),
+                    .nonTerminal(expression),
+                ]),
+                Production(goal: expression, rule: [.terminal(Terminal(string: "ID"))]),
+            ],
+            start: expression, lexicalTokens: [:]
+        )
+        let run = REPLParserExperiment.run(
+            parser: .ll1, grammar: grammar, input: "ID PLUS ID"
+        )
+        #expect(run.availability == .unsupported)
+        #expect(run.unsupportedReason?.contains("LL(1)") == true)
+        #expect(run.failure == nil)
     }
 
     @Test func commandsExposeForestReplayAndJSONContract() throws {

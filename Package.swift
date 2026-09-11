@@ -20,6 +20,8 @@ let package = Package(
         .package(url: "https://github.com/hakkabon/CYK-Parser.git", .upToNextMinor(from: "0.2.0")),
         .package(url: "https://github.com/hakkabon/RNGLR-Parser.git", .upToNextMinor(from: "0.2.1")),
         .package(url: "https://github.com/hakkabon/LR-Parsing.git", .upToNextMinor(from: "0.2.2")),
+        .package(url: "https://github.com/hakkabon/LL-Parsing.git", .upToNextMinor(from: "0.1.0")),
+        .package(url: "https://github.com/hakkabon/Earley-TableParser.git", .upToNextMinor(from: "0.1.0")),
         .package(url: "https://github.com/hakkabon/GrammarDiagram.git", .upToNextMinor(from: "0.1.0")),
     ],
     targets: [
@@ -33,6 +35,8 @@ let package = Package(
                 .product(name: "CYK-Parser", package: "CYK-Parser"),
                 .product(name: "RNGLR-Parser", package: "RNGLR-Parser"),
                 .product(name: "LR-Parsing", package: "LR-Parsing"),
+                .product(name: "LL-Parsing", package: "LL-Parsing"),
+                .product(name: "Earley-TableParser", package: "Earley-TableParser"),
                 .product(name: "GrammarDiagram", package: "GrammarDiagram"),
             ],
             path: "Sources/GrammarReplLib"

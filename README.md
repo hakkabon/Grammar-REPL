@@ -72,7 +72,8 @@ The prototype currently supports:
 - displaying FIRST and FOLLOW sets;
 - calculating and displaying PREDICT sets for individual productions;
 - detecting pairwise LL(1) PREDICT-set conflicts;
-- selecting Earley, CYK, RNGLR, LR(0), SLR, LALR, or canonical LR(1);
+- selecting Earley, Earley Table SL/EL, CYK, RNGLR, LL(1), LR(0), SLR,
+  LALR, or canonical LR(1);
 - inspecting generated LR states, transitions, ACTION/GOTO tables, conflicts,
   and shortest conflict witnesses;
 - structured parser outcomes and bounded local repair in deterministic LR modes;
@@ -84,8 +85,8 @@ The prototype currently supports:
 - opt-in structured LR parser tracing with shift, reduce, error, recovery, and
   acceptance events;
 - parsing sample input without leaving the session;
-- comparing acceptance and concrete-tree agreement across all seven engines;
-- exploring portable packed forests from Earley, CYK, and RNGLR;
+- comparing acceptance and concrete-tree agreement across all ten engines;
+- exploring portable packed forests from Earley, Earley Table SL/EL, CYK, and RNGLR;
 - replaying semantic parse events and exporting each engine's JSON contract;
 - retaining every derivation returned by the selected parser;
 - displaying a selected parse tree with source lexemes at its leaves;
@@ -99,7 +100,6 @@ The prototype currently supports:
 
 The prototype does **not** yet implement:
 
-- LL(1) runtime parsing through the `LL-Parsing` package;
 - resumable LR stack checkpoints (edited input is incrementally analyzed and
   then fully validated);
 - JSON-RPC process framing for a standalone Language Server Protocol executable.
@@ -671,13 +671,16 @@ for the shared ecosystem corpus. Its decoding, normalized-token LR execution,
 bounded recovery, and structured observations live in `GrammarReplLib`. Corpus
 versions 1 through 3 are accepted. Version 2 adds normalized tree roots and
 version 3 adds seven-engine comparison, production-aware replay, and portable
-forest evidence. Readline, command history, and formatted terminal output are
-not part of the conformance result.
+forest evidence; version 4 completes the ten-engine family and adds explicit
+LL(1) capability observations. Readline, command history, and formatted
+terminal output are not part of the conformance result.
 
-Grammar-REPL 0.3.2 raises its RNGLR floor to 0.2.1 and LR-Parsing floor to
-0.2.2. Its engine-property suite now verifies replay termination, stable
-ordering, forest references and extents, production identity, transition-free
-portable snapshots, and exact Catalan derivation counts across repeated runs.
+Grammar-REPL 0.4.0 completes the engine family with LL(1) and the SL and EL
+variants of Earley Table Traversal. LL-incompatible grammars carry an explicit
+unsupported capability result instead of being presented as rejected input.
+Its engine-property suite verifies replay termination, stable ordering, forest
+references and extents, production identity, transition-free portable
+snapshots, and exact Catalan derivation counts across repeated runs.
 
 ### Command decoding
 

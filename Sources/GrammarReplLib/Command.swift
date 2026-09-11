@@ -10,7 +10,12 @@ import Foundation
 import LR_Parsing
 
 public enum REPLParser: String, CaseIterable, Codable, Hashable, Sendable {
-    case earley, cyk, rnglr, lr0, slr, lalr, lr1
+    case earley
+    case earleySL = "earley-sl"
+    case earleyEL = "earley-el"
+    case cyk, rnglr
+    case ll1
+    case lr0, slr, lalr, lr1
 
     public var lrAlgorithm: LRParser.Algorithm? {
         switch self {
