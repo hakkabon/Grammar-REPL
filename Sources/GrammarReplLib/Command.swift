@@ -38,6 +38,7 @@ public enum REPLCommand: Equatable {
     case tree(Int?), state(Int?), explain(Int?), replay(Int?, branches: Bool)
     case compare(String?), forest(REPLParser?), playback(parser: REPLParser?, limit: Int?)
     case contract(REPLParser?)
+    case experimentSave(String), experimentVerify(String), experimentShow(String)
     case diagram(String), export(artifact: String, path: String)
     case trace(String?), identity(String), precedence(String), resolution(String), conflicts(String?), decisions(Int?)
     case unknown(String)
@@ -68,6 +69,15 @@ public enum REPLCommand: Equatable {
         case "compare": return .compare(argument.isEmpty ? nil : unquote(argument))
         case "forest": return .forest(REPLParser(rawValue: argument.lowercased()))
         case "contract": return .contract(REPLParser(rawValue: argument.lowercased()))
+        case "experiment":
+            let words = shellWords(argument)
+            guard words.count == 2 else { return .unknown(text) }
+            switch words[0].lowercased() {
+            case "save": return .experimentSave(words[1])
+            case "verify": return .experimentVerify(words[1])
+            case "show": return .experimentShow(words[1])
+            default: return .unknown(text)
+            }
         case "playback":
             let words = argument.split(whereSeparator: \.isWhitespace).map(String.init)
             let parser = words.first.flatMap { REPLParser(rawValue: $0.lowercased()) }

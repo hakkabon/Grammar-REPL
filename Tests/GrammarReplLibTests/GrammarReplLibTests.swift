@@ -111,6 +111,9 @@ struct CommandTests {
         #expect(REPLCommand.decode(":playback lr1 12") == .playback(parser: .lr1, limit: 12))
         #expect(REPLCommand.decode(":playback 12") == .playback(parser: nil, limit: 12))
         #expect(REPLCommand.decode(":contract cyk") == .contract(.cyk))
+        #expect(REPLCommand.decode(":experiment save \"my run.json\"") == .experimentSave("my run.json"))
+        #expect(REPLCommand.decode(":experiment verify run.json") == .experimentVerify("run.json"))
+        #expect(REPLCommand.decode(":experiment show run.json") == .experimentShow("run.json"))
     }
 }
 
@@ -288,6 +291,89 @@ struct ParserExperimentTests {
 
         repl.execute(.parser(.rnglr))
         #expect(!repl.session.lastTrees.isEmpty)
+    }
+}
+
+@Suite("Reproducible experiments")
+struct ReproducibleExperimentTests {
+    @Test func roundTripsAndReplaysEveryEngineDeterministically() throws {
+        let grammar = try Grammar(bnf: "<S> ::= \"a\"", start: "S")
+        let comparison = REPLParserExperiment.compare(grammar: grammar, input: "a")
+        let first = try REPLExperimentDocument.capture(grammar: grammar, comparison: comparison)
+        let second = try REPLExperimentDocument.capture(grammar: grammar, comparison: comparison)
+
+        #expect(first.fingerprint == second.fingerprint)
+        #expect(try first.json() == second.json())
+
+        let decoded = try REPLExperimentDocument.decode(first.json())
+        let verification = try decoded.verify()
+        #expect(decoded.schemaVersion == 1)
+        #expect(decoded.engines == REPLParser.allCases)
+        #expect(verification.matches)
+        #expect(verification.engines.allSatisfy { $0.matches })
+    }
+
+    @Test func preservesUnsupportedCapabilitiesAndPrecedence() throws {
+        let expression = NonTerminal(name: "Expression")
+        let plus = Terminal(string: "PLUS")
+        let grammar = Grammar(
+            productions: [
+                Production(goal: expression, rule: [
+                    .nonTerminal(expression), .terminal(plus), .nonTerminal(expression),
+                ]),
+                Production(goal: expression, rule: [.terminal(Terminal(string: "ID"))]),
+            ], start: expression, lexicalTokens: [:]
+        )
+        let precedence = LRPrecedenceSpecification(levels: [
+            LRPrecedenceLevel(1, associativity: .left, terminals: [plus]),
+        ])
+        let comparison = REPLParserExperiment.compare(
+            grammar: grammar, input: "ID PLUS ID PLUS ID", precedence: precedence
+        )
+        let document = try REPLExperimentDocument.capture(
+            grammar: grammar, comparison: comparison, precedence: precedence
+        )
+        let decoded = try REPLExperimentDocument.decode(document.json())
+        let verification = try decoded.verify()
+
+        #expect(decoded.precedence.levels.count == 1)
+        #expect(decoded.observations.first { $0.parser == .ll1 }?.availability == .unsupported)
+        #expect(verification.matches)
+    }
+
+    @Test func rejectsTamperedArtifactBeforeReplay() throws {
+        let grammar = try Grammar(bnf: "<S> ::= \"a\"", start: "S")
+        let comparison = REPLParserExperiment.compare(grammar: grammar, input: "a")
+        let document = try REPLExperimentDocument.capture(grammar: grammar, comparison: comparison)
+        var object = try #require(JSONSerialization.jsonObject(with: document.json()) as? [String: Any])
+        object["input"] = "b"
+        let tampered = try JSONSerialization.data(withJSONObject: object)
+
+        #expect(throws: REPLExperimentError.self) {
+            try REPLExperimentDocument.decode(tampered)
+        }
+    }
+
+    @Test func replSavesShowsAndVerifiesPortableArtifact() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grammar-repl-reproducible-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let grammarURL = directory.appendingPathComponent("grammar.bnf")
+        let artifactURL = directory.appendingPathComponent("experiment.json")
+        try "<S> ::= \"a\"".write(to: grammarURL, atomically: true, encoding: .utf8)
+
+        var output: [String] = []
+        let repl = GrammarREPL(output: { output.append($0) })
+        repl.execute(.load(path: grammarURL.path, start: "S"))
+        repl.execute(.compare("a"))
+        repl.execute(.experimentSave(artifactURL.path))
+        repl.execute(.experimentShow(artifactURL.path))
+        repl.execute(.experimentVerify(artifactURL.path))
+
+        #expect(FileManager.default.fileExists(atPath: artifactURL.path))
+        #expect(output.contains { $0.hasPrefix("Saved experiment ") })
+        #expect(output.contains { $0.hasPrefix("Experiment verified: ") })
     }
 }
 

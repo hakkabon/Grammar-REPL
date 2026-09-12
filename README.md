@@ -682,6 +682,33 @@ Its engine-property suite verifies replay termination, stable ordering, forest
 references and extents, production identity, transition-free portable
 snapshots, and exact Catalan derivation counts across repeated runs.
 
+### Reproducible experiments
+
+Grammar-REPL 0.5.0 can turn a comparison into a self-contained experiment:
+
+```text
+:compare "ID PLUS ID PLUS ID"
+:experiment save expression-experiment.json
+:experiment show expression-experiment.json
+:experiment verify expression-experiment.json
+```
+
+The versioned artifact records the grammar, input, canonical engine set,
+precedence and resolution settings, capability decisions, normalized parse
+contracts, and derivation fingerprints. It deliberately records neither a
+source path nor a timestamp. A semantic FNV-1a fingerprint detects changes to
+the experiment without relying on Swift's process-randomized `Hasher`.
+
+Experiments can also be verified non-interactively, including in CI:
+
+```sh
+swift run grammar-repl-experiment verify expression-experiment.json
+```
+
+The verifier exits successfully only when every recorded engine observation
+and the cross-engine agreement are reproduced. `show` prints a compact summary
+without running the parsers.
+
 ### Command decoding
 
 `REPLCommand` is an enum containing one case for every supported operation.

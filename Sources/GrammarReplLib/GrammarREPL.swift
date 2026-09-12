@@ -66,6 +66,9 @@ public final class GrammarREPL {
             case .forest(let parser): try showForest(parser)
             case .playback(let parser, let limit): try showPlayback(parser, limit: limit)
             case .contract(let parser): try showContract(parser)
+            case .experimentSave(let path): try saveExperiment(to: path)
+            case .experimentVerify(let path): try verifyExperiment(at: path)
+            case .experimentShow(let path): try showExperiment(at: path)
             case .settings: showSettings()
             case .history:
                 for (index, line) in history.entries.enumerated() { output("\(index + 1)  \(line)") }
@@ -363,6 +366,44 @@ public final class GrammarREPL {
         output(String(decoding: try encoder.encode(run.contract), as: UTF8.self))
     }
 
+    private func saveExperiment(to path: String) throws {
+        guard let loaded = session.loaded, let comparison = session.lastComparison else {
+            throw Message("Load a grammar and use :compare <input> before saving an experiment.")
+        }
+        let document = try REPLExperimentDocument.capture(
+            grammar: loaded.grammar, comparison: comparison,
+            precedence: session.precedence, resolutionPolicy: session.resolutionPolicy
+        )
+        let url = URL(fileURLWithPath: path).standardizedFileURL
+        try document.json().write(to: url, options: .atomic)
+        output("Saved experiment \(document.fingerprint) to \(url.path).")
+    }
+
+    private func verifyExperiment(at path: String) throws {
+        let document = try loadExperiment(at: path)
+        let verification = try document.verify()
+        for engine in verification.engines where !engine.matches {
+            output("\(engine.parser.rawValue): changed \(engine.differences.map(\.rawValue).joined(separator: ", ")).")
+        }
+        if verification.matches {
+            output("Experiment verified: \(verification.artifactFingerprint) (\(verification.engines.count) engines).")
+        } else {
+            throw Message("Experiment diverged: expected \(verification.expectedAgreement.rawValue), observed \(verification.actualAgreement.rawValue).")
+        }
+    }
+
+    private func showExperiment(at path: String) throws {
+        let document = try loadExperiment(at: path)
+        output("Experiment \(document.fingerprint): schema \(document.schemaVersion), producer \(document.producer.name) \(document.producer.version).")
+        output("Input: \(document.input.debugDescription)")
+        output("Engines: \(document.engines.map(\.rawValue).joined(separator: ", ")).")
+        output("Expected agreement: \(document.agreement.rawValue).")
+    }
+
+    private func loadExperiment(at path: String) throws -> REPLExperimentDocument {
+        try REPLExperimentDocument.decode(Data(contentsOf: URL(fileURLWithPath: path)))
+    }
+
     private func showSettings() {
         output("Grammar: \(session.loaded?.url.path ?? "none")\nParser: \(session.parser.rawValue)\nLast input: \(session.lastInput ?? "none")\nComparison: \(session.lastComparison?.agreement.rawValue ?? "none")\nLR artifact: \(session.automaton.map { "\($0.states.count) states" } ?? "not generated")\nPrecedence levels: \(session.precedenceLevels.count)\nResolution policy: \(session.resolutionPolicy?.rawValue ?? "none")\nTracing: \(session.traceEnabled ? "on" : "off")")
     }
@@ -555,6 +596,7 @@ public final class GrammarREPL {
       :forest [parser]       Explore a compared parser's portable forest
       :playback [parser] [n] Replay portable semantic parse events
       :contract [parser]     Print a parser's portable contract as JSON
+      :experiment <op> <file> Save, show, or verify a reproducible experiment
       :trace [option]        Enable/disable/show/clear LR runtime tracing
       :identity <kind> <n>   Show a stable state/conflict/production ID
       :diagram <artifact>    Render grammar/rule/automaton/state/tree

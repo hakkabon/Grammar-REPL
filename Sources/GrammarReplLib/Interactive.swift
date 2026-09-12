@@ -29,7 +29,7 @@ public enum CommandCompletion {
     public static let commands = [
         ":help", ":quit", ":load", ":reload", ":grammar", ":parser",
         ":check", ":conflicts", ":decisions", ":state", ":explain", ":replay", ":first", ":follow",
-        ":predict", ":parse", ":tree", ":compare", ":forest", ":playback", ":contract", ":trace", ":identity", ":precedence", ":resolution", ":diagram", ":export", ":history", ":settings"
+        ":predict", ":parse", ":tree", ":compare", ":forest", ":playback", ":contract", ":experiment", ":trace", ":identity", ":precedence", ":resolution", ":diagram", ":export", ":history", ":settings"
     ]
 
     public static func candidates(for line: String, session: REPLSession) -> [String] {
@@ -49,6 +49,7 @@ public enum CommandCompletion {
         case ":trace": values = ["on", "off", "clear"]
         case ":identity": values = ["state", "conflict", "production"]
         case ":resolution": values = ["shift", "reduce", "reject", "clear"]
+        case ":experiment": values = ["save", "show", "verify"]
         default: values = []
         }
         return values.filter { $0.hasPrefix(fragment) }.sorted()

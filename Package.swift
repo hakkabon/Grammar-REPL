@@ -9,6 +9,7 @@ let package = Package(
     products: [
         .executable(name: "grammar-repl", targets: ["grammar-repl"]),
         .executable(name: "grammar-repl-conformance", targets: ["grammar-repl-conformance"]),
+        .executable(name: "grammar-repl-experiment", targets: ["grammar-repl-experiment"]),
         .library(name: "GrammarReplLib", targets: ["GrammarReplLib"]),
     ],
     dependencies: [
@@ -19,7 +20,7 @@ let package = Package(
         .package(url: "https://github.com/hakkabon/Earley-Parser.git", .upToNextMinor(from: "0.2.0")),
         .package(url: "https://github.com/hakkabon/CYK-Parser.git", .upToNextMinor(from: "0.2.0")),
         .package(url: "https://github.com/hakkabon/RNGLR-Parser.git", .upToNextMinor(from: "0.2.1")),
-        .package(url: "https://github.com/hakkabon/LR-Parsing.git", .upToNextMinor(from: "0.2.2")),
+        .package(url: "https://github.com/hakkabon/LR-Parsing.git", .upToNextMinor(from: "0.2.3")),
         .package(url: "https://github.com/hakkabon/LL-Parsing.git", .upToNextMinor(from: "0.1.0")),
         .package(url: "https://github.com/hakkabon/Earley-TableParser.git", .upToNextMinor(from: "0.1.0")),
         .package(url: "https://github.com/hakkabon/GrammarDiagram.git", .upToNextMinor(from: "0.1.0")),
@@ -54,6 +55,11 @@ let package = Package(
             name: "grammar-repl-conformance",
             dependencies: ["GrammarReplLib"],
             path: "Sources/Conformance"
+        ),
+        .executableTarget(
+            name: "grammar-repl-experiment",
+            dependencies: ["GrammarReplLib"],
+            path: "Sources/ExperimentCLI"
         ),
         .systemLibrary(
             name: "CReadline",

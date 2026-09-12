@@ -8,14 +8,14 @@ import Earley_Parser
 import Earley_TableParser
 import LL_Parsing
 
-public enum REPLComparisonAgreement: String, Codable, Sendable {
+public enum REPLComparisonAgreement: String, Codable, Equatable, Sendable {
     case complete
     case acceptanceOnly
     case divergent
     case inconclusive
 }
 
-public enum REPLParserAvailability: String, Codable, Sendable {
+public enum REPLParserAvailability: String, Codable, Equatable, Sendable {
     case supported
     case unsupported
 }
