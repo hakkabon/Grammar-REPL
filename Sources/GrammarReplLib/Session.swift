@@ -10,6 +10,7 @@ import Foundation
 import Grammar
 import Parser
 import LR_Parsing
+import struct Compiler.ASTMapping
 
 public struct LoadedGrammar {
     public let url: URL
@@ -41,6 +42,7 @@ public struct REPLSession {
     public private(set) var lastComparison: REPLParserComparison?
     public private(set) var precedenceLevels: [LRPrecedenceLevel] = []
     public private(set) var resolutionPolicy: LRStandardConflictPolicy?
+    public private(set) var semanticMapping: ASTMapping?
     public var precedence: LRPrecedenceSpecification? {
         precedenceLevels.isEmpty ? nil : LRPrecedenceSpecification(levels: precedenceLevels)
     }
@@ -93,6 +95,9 @@ public struct REPLSession {
     public mutating func setResolutionPolicy(_ policy: LRStandardConflictPolicy?) {
         resolutionPolicy = policy
         invalidateDerivedState(clearInput: false)
+    }
+    public mutating func setSemanticMapping(_ mapping: ASTMapping?) {
+        semanticMapping = mapping
     }
 
     private mutating func invalidateDerivedState(clearInput: Bool) {

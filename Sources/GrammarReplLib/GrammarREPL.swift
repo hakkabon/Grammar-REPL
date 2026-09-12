@@ -14,6 +14,10 @@ import RNGLR_Parser
 import CYK_Parser
 import Earley_Parser
 import Earley_TableParser
+import struct Compiler.ASTMapping
+import struct Compiler.CompilerSemanticConvergenceReport
+import struct Compiler.CompilerSemanticEngineInput
+import enum Compiler.CompilerSemanticConvergence
 
 public final class GrammarREPL {
     public private(set) var session = REPLSession()
@@ -69,6 +73,7 @@ public final class GrammarREPL {
             case .experimentSave(let path): try saveExperiment(to: path)
             case .experimentVerify(let path): try verifyExperiment(at: path)
             case .experimentShow(let path): try showExperiment(at: path)
+            case .semantics(let path): try configureSemantics(path)
             case .settings: showSettings()
             case .history:
                 for (index, line) in history.entries.enumerated() { output("\(index + 1)  \(line)") }
@@ -314,6 +319,13 @@ public final class GrammarREPL {
             else if let failure = run.failure { output("  \(failure)") }
         }
         output("Agreement: \(comparison.agreement.rawValue).")
+        if let mapping = session.semanticMapping {
+            let report = semanticReport(comparison, mapping: mapping)
+            output("Semantic agreement: \(report.agreement.rawValue).")
+            for observation in report.observations where observation.status == .evaluated {
+                output("  \(observation.engine): \(observation.values.map(\.displayValue).joined(separator: " | "))")
+            }
+        }
     }
 
     private func experimentRun(for requested: REPLParser?) throws -> REPLParserRun {
@@ -372,7 +384,8 @@ public final class GrammarREPL {
         }
         let document = try REPLExperimentDocument.capture(
             grammar: loaded.grammar, comparison: comparison,
-            precedence: session.precedence, resolutionPolicy: session.resolutionPolicy
+            precedence: session.precedence, resolutionPolicy: session.resolutionPolicy,
+            semanticMapping: session.semanticMapping
         )
         let url = URL(fileURLWithPath: path).standardizedFileURL
         try document.json().write(to: url, options: .atomic)
@@ -388,6 +401,9 @@ public final class GrammarREPL {
         if verification.matches {
             output("Experiment verified: \(verification.artifactFingerprint) (\(verification.engines.count) engines).")
         } else {
+            if !verification.semanticMatches {
+                throw Message("Experiment diverged: Compiler semantic evidence changed.")
+            }
             throw Message("Experiment diverged: expected \(verification.expectedAgreement.rawValue), observed \(verification.actualAgreement.rawValue).")
         }
     }
@@ -398,6 +414,43 @@ public final class GrammarREPL {
         output("Input: \(document.input.debugDescription)")
         output("Engines: \(document.engines.map(\.rawValue).joined(separator: ", ")).")
         output("Expected agreement: \(document.agreement.rawValue).")
+        if let semantics = document.semanticReport {
+            output("Expected semantic agreement: \(semantics.agreement.rawValue).")
+        }
+    }
+
+    private func configureSemantics(_ path: String?) throws {
+        guard let path else {
+            output(session.semanticMapping == nil
+                   ? "Compiler semantics: disabled."
+                   : "Compiler semantics: enabled (\(session.semanticMapping!.actions.count) AST actions).")
+            return
+        }
+        if path.lowercased() == "clear" {
+            session.setSemanticMapping(nil)
+            output("Compiler semantics disabled.")
+            return
+        }
+        let url = URL(fileURLWithPath: path).standardizedFileURL
+        session.setSemanticMapping(try ASTMapping(json: Data(contentsOf: url)))
+        output("Loaded Compiler semantic mapping from \(url.path).")
+    }
+
+    private func semanticReport(
+        _ comparison: REPLParserComparison,
+        mapping: ASTMapping
+    ) -> CompilerSemanticConvergenceReport {
+        CompilerSemanticConvergence.evaluate(
+            source: comparison.input,
+            inputs: comparison.runs.map {
+                CompilerSemanticEngineInput(
+                    engine: $0.parser.rawValue,
+                    parseStatus: $0.contract.status,
+                    trees: $0.trees
+                )
+            },
+            mapping: mapping
+        )
     }
 
     private func loadExperiment(at path: String) throws -> REPLExperimentDocument {
@@ -597,6 +650,7 @@ public final class GrammarREPL {
       :playback [parser] [n] Replay portable semantic parse events
       :contract [parser]     Print a parser's portable contract as JSON
       :experiment <op> <file> Save, show, or verify a reproducible experiment
+      :semantics [file|clear] Load/show/clear a Compiler AST mapping
       :trace [option]        Enable/disable/show/clear LR runtime tracing
       :identity <kind> <n>   Show a stable state/conflict/production ID
       :diagram <artifact>    Render grammar/rule/automaton/state/tree

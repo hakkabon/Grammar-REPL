@@ -684,7 +684,7 @@ snapshots, and exact Catalan derivation counts across repeated runs.
 
 ### Reproducible experiments
 
-Grammar-REPL 0.5.0 can turn a comparison into a self-contained experiment:
+Grammar-REPL 0.6.0 can turn a comparison into a self-contained experiment:
 
 ```text
 :compare "ID PLUS ID PLUS ID"
@@ -698,6 +698,22 @@ precedence and resolution settings, capability decisions, normalized parse
 contracts, and derivation fingerprints. It deliberately records neither a
 source path nor a timestamp. A semantic FNV-1a fingerprint detects changes to
 the experiment without relying on Swift's process-randomized `Hasher`.
+
+Schema 2 optionally carries Compiler-owned semantic evidence. Load a
+version-1 `ASTMapping` before comparing and saving:
+
+```text
+:semantics expression-actions.json
+:compare "42"
+:experiment save expression-semantics.json
+```
+
+Every parser derivation is adapted, type-checked, lowered, and evaluated by
+Compiler. Grammar-REPL only orchestrates the engines and embeds Compiler's
+report, so structurally different trees can be shown to converge on one value
+without duplicating language semantics in the REPL. `:semantics clear`
+returns to syntax-only experiments. Schema-1 experiments remain readable and
+verifiable.
 
 Experiments can also be verified non-interactively, including in CI:
 

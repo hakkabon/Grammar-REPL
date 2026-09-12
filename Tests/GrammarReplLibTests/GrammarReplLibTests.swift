@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import Grammar
+import struct Compiler.ASTMapping
 import Parser
 import LR_Parsing
 @testable import GrammarReplLib
@@ -307,7 +308,7 @@ struct ReproducibleExperimentTests {
 
         let decoded = try REPLExperimentDocument.decode(first.json())
         let verification = try decoded.verify()
-        #expect(decoded.schemaVersion == 1)
+        #expect(decoded.schemaVersion == 2)
         #expect(decoded.engines == REPLParser.allCases)
         #expect(verification.matches)
         #expect(verification.engines.allSatisfy { $0.matches })
@@ -352,6 +353,30 @@ struct ReproducibleExperimentTests {
         #expect(throws: REPLExperimentError.self) {
             try REPLExperimentDocument.decode(tampered)
         }
+    }
+
+    @Test func embedsAndReplaysCompilerSemanticConvergence() throws {
+        let grammar = try Grammar(
+            bnf: "<Expression> ::= <Integer>\n<Integer> ::= \"42\"",
+            start: "Expression"
+        )
+        let comparison = REPLParserExperiment.compare(grammar: grammar, input: "42")
+        let mapping = ASTMapping(actions: [
+            "Expression": .passThrough,
+            "Integer": .passThrough,
+            "terminal": .integer,
+        ])
+        let document = try REPLExperimentDocument.capture(
+            grammar: grammar, comparison: comparison, semanticMapping: mapping
+        )
+        let decoded = try REPLExperimentDocument.decode(document.json())
+        let report = try #require(decoded.semanticReport)
+
+        #expect(report.agreement == .complete)
+        #expect(report.observations.filter { $0.status == .evaluated }.count >= 2)
+        #expect(report.observations.filter { $0.status == .evaluated }
+            .allSatisfy { $0.values == [.integer(42)] })
+        #expect(try decoded.verify().semanticMatches)
     }
 
     @Test func replSavesShowsAndVerifiesPortableArtifact() throws {

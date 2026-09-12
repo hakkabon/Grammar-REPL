@@ -39,6 +39,7 @@ public enum REPLCommand: Equatable {
     case compare(String?), forest(REPLParser?), playback(parser: REPLParser?, limit: Int?)
     case contract(REPLParser?)
     case experimentSave(String), experimentVerify(String), experimentShow(String)
+    case semantics(String?)
     case diagram(String), export(artifact: String, path: String)
     case trace(String?), identity(String), precedence(String), resolution(String), conflicts(String?), decisions(Int?)
     case unknown(String)
@@ -78,6 +79,7 @@ public enum REPLCommand: Equatable {
             case "show": return .experimentShow(words[1])
             default: return .unknown(text)
             }
+        case "semantics": return .semantics(argument.isEmpty ? nil : argument)
         case "playback":
             let words = argument.split(whereSeparator: \.isWhitespace).map(String.init)
             let parser = words.first.flatMap { REPLParser(rawValue: $0.lowercased()) }

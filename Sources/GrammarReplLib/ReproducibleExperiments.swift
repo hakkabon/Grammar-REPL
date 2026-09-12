@@ -2,16 +2,20 @@ import Foundation
 import Grammar
 import Parser
 import LR_Parsing
+import struct Compiler.ASTMapping
+import struct Compiler.CompilerSemanticConvergenceReport
+import struct Compiler.CompilerSemanticEngineInput
+import enum Compiler.CompilerSemanticConvergence
 
 public enum GrammarREPLRelease {
-    public static let version = "0.5.0"
+    public static let version = "0.6.0"
 }
 
 /// A self-contained, path- and time-independent record of an engine comparison.
 /// The grammar and parser settings are inputs; normalized contracts and tree
 /// fingerprints are the expected observations.
 public struct REPLExperimentDocument: Codable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
     public static let fingerprintAlgorithm = "fnv1a64"
 
     public let schemaVersion: Int
@@ -23,6 +27,8 @@ public struct REPLExperimentDocument: Codable {
     public let resolutionPolicy: String?
     public let agreement: REPLComparisonAgreement
     public let observations: [REPLExperimentObservation]
+    public let semanticMapping: ASTMapping?
+    public let semanticReport: CompilerSemanticConvergenceReport?
     public let fingerprintAlgorithm: String
     public let fingerprint: String
 
@@ -35,6 +41,8 @@ public struct REPLExperimentDocument: Codable {
         resolutionPolicy: String?,
         agreement: REPLComparisonAgreement,
         observations: [REPLExperimentObservation],
+        semanticMapping: ASTMapping?,
+        semanticReport: CompilerSemanticConvergenceReport?,
         fingerprint: String
     ) {
         schemaVersion = Self.currentSchemaVersion
@@ -46,6 +54,8 @@ public struct REPLExperimentDocument: Codable {
         self.resolutionPolicy = resolutionPolicy
         self.agreement = agreement
         self.observations = observations
+        self.semanticMapping = semanticMapping
+        self.semanticReport = semanticReport
         fingerprintAlgorithm = Self.fingerprintAlgorithm
         self.fingerprint = fingerprint
     }
@@ -55,6 +65,7 @@ public struct REPLExperimentDocument: Codable {
         comparison: REPLParserComparison,
         precedence: LRPrecedenceSpecification? = nil,
         resolutionPolicy: LRStandardConflictPolicy? = nil,
+        semanticMapping: ASTMapping? = nil,
         producerVersion: String = GrammarREPLRelease.version
     ) throws -> Self {
         let engines = comparison.runs.map(\.parser)
@@ -65,15 +76,28 @@ public struct REPLExperimentDocument: Codable {
         let observations = comparison.runs.map(REPLExperimentObservation.init)
         let producer = REPLExperimentProducer(name: "Grammar-REPL", version: producerVersion)
         let policy = resolutionPolicy?.rawValue
+        let semanticReport = semanticMapping.map { mapping in
+            CompilerSemanticConvergence.evaluate(
+                source: comparison.input,
+                inputs: comparison.runs.map {
+                    CompilerSemanticEngineInput(
+                        engine: $0.parser.rawValue, parseStatus: $0.contract.status, trees: $0.trees
+                    )
+                }, mapping: mapping
+            )
+        }
         let material = try fingerprintMaterial(
+            schemaVersion: currentSchemaVersion,
             producer: producer, grammar: grammar, input: comparison.input,
             engines: engines, precedence: settings, resolutionPolicy: policy,
-            agreement: comparison.agreement, observations: observations
+            agreement: comparison.agreement, observations: observations,
+            semanticMapping: semanticMapping, semanticReport: semanticReport
         )
         return Self(
             producer: producer, grammar: grammar, input: comparison.input,
             engines: engines, precedence: settings, resolutionPolicy: policy,
             agreement: comparison.agreement, observations: observations,
+            semanticMapping: semanticMapping, semanticReport: semanticReport,
             fingerprint: stableFingerprint(material)
         )
     }
@@ -86,7 +110,7 @@ public struct REPLExperimentDocument: Codable {
 
     public static func decode(_ data: Data) throws -> Self {
         let value = try JSONDecoder().decode(Self.self, from: data)
-        guard value.schemaVersion == currentSchemaVersion else {
+        guard (1...currentSchemaVersion).contains(value.schemaVersion) else {
             throw REPLExperimentError.unsupportedSchema(value.schemaVersion)
         }
         guard value.fingerprintAlgorithm == fingerprintAlgorithm else {
@@ -97,11 +121,22 @@ public struct REPLExperimentDocument: Codable {
               value.observations.map(\.parser) == value.engines else {
             throw REPLExperimentError.invalidEngineOrder
         }
+        let semanticEvidenceIsValid = value.semanticReport.map {
+            $0.schemaVersion == CompilerSemanticConvergenceReport.currentSchemaVersion
+                && $0.observations.map(\.engine) == value.engines.map(\.rawValue)
+        } ?? true
+        guard (value.semanticMapping == nil) == (value.semanticReport == nil),
+              value.semanticMapping?.version == ASTMapping.formatVersion || value.semanticMapping == nil,
+              semanticEvidenceIsValid else {
+            throw REPLExperimentError.invalidSemanticEvidence
+        }
         let material = try fingerprintMaterial(
+            schemaVersion: value.schemaVersion,
             producer: value.producer, grammar: value.grammar, input: value.input,
             engines: value.engines, precedence: value.precedence,
             resolutionPolicy: value.resolutionPolicy, agreement: value.agreement,
-            observations: value.observations
+            observations: value.observations,
+            semanticMapping: value.semanticMapping, semanticReport: value.semanticReport
         )
         guard stableFingerprint(material) == value.fingerprint else {
             throw REPLExperimentError.fingerprintMismatch
@@ -125,11 +160,22 @@ public struct REPLExperimentDocument: Codable {
         }
         let checks = zip(observations, actual).map(REPLExperimentCheck.init)
         let actualComparison = REPLParserComparison(input: input, runs: actual)
+        let actualSemantics = semanticMapping.map { mapping in
+            CompilerSemanticConvergence.evaluate(
+                source: input,
+                inputs: actual.map {
+                    CompilerSemanticEngineInput(
+                        engine: $0.parser.rawValue, parseStatus: $0.contract.status, trees: $0.trees
+                    )
+                }, mapping: mapping
+            )
+        }
         return REPLExperimentVerification(
             artifactFingerprint: fingerprint,
             expectedAgreement: agreement,
             actualAgreement: actualComparison.agreement,
-            engines: checks
+            engines: checks,
+            semanticMatches: semanticReport == actualSemantics
         )
     }
 
@@ -138,6 +184,7 @@ public struct REPLExperimentDocument: Codable {
     }
 
     private static func fingerprintMaterial(
+        schemaVersion: Int,
         producer: REPLExperimentProducer,
         grammar: Grammar,
         input: String,
@@ -145,14 +192,17 @@ public struct REPLExperimentDocument: Codable {
         precedence: REPLExperimentPrecedence,
         resolutionPolicy: String?,
         agreement: REPLComparisonAgreement,
-        observations: [REPLExperimentObservation]
+        observations: [REPLExperimentObservation],
+        semanticMapping: ASTMapping?,
+        semanticReport: CompilerSemanticConvergenceReport?
     ) throws -> Data {
         let semanticGrammar = REPLExperimentGrammarIdentity(grammar)
         let payload = REPLExperimentFingerprintPayload(
-            schemaVersion: currentSchemaVersion, producer: producer,
+            schemaVersion: schemaVersion, producer: producer,
             grammar: semanticGrammar, input: input, engines: engines,
             precedence: precedence, resolutionPolicy: resolutionPolicy,
-            agreement: agreement, observations: observations
+            agreement: agreement, observations: observations,
+            semanticMapping: semanticMapping, semanticReport: semanticReport
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -249,9 +299,10 @@ public struct REPLExperimentVerification: Codable, Equatable, Sendable {
     public let expectedAgreement: REPLComparisonAgreement
     public let actualAgreement: REPLComparisonAgreement
     public let engines: [REPLExperimentCheck]
+    public let semanticMatches: Bool
 
     public var matches: Bool {
-        expectedAgreement == actualAgreement && engines.allSatisfy(\.matches)
+        expectedAgreement == actualAgreement && engines.allSatisfy(\.matches) && semanticMatches
     }
 }
 
@@ -286,6 +337,7 @@ public enum REPLExperimentError: Error, CustomStringConvertible {
     case invalidEngineOrder
     case invalidPrecedence
     case invalidResolutionPolicy(String)
+    case invalidSemanticEvidence
 
     public var description: String {
         switch self {
@@ -301,6 +353,8 @@ public enum REPLExperimentError: Error, CustomStringConvertible {
             "Experiment contains an invalid precedence specification."
         case .invalidResolutionPolicy(let policy):
             "Experiment contains unknown resolution policy \(policy)."
+        case .invalidSemanticEvidence:
+            "Experiment contains inconsistent Compiler semantic evidence."
         }
     }
 }
@@ -315,6 +369,8 @@ private struct REPLExperimentFingerprintPayload: Codable {
     let resolutionPolicy: String?
     let agreement: REPLComparisonAgreement
     let observations: [REPLExperimentObservation]
+    let semanticMapping: ASTMapping?
+    let semanticReport: CompilerSemanticConvergenceReport?
 }
 
 /// Only parser-significant grammar state participates in the fingerprint.
