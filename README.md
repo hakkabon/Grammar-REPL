@@ -679,6 +679,13 @@ exact ordered insert/delete/skip script in original-token coordinates.
 Readline, command history, and formatted terminal output are not part of the
 conformance result.
 
+Grammar-REPL 0.8.0 records Compiler schema-2 semantic evidence in experiment
+schema 3. Each parser derivation retains its syntax fingerprint, value or
+diagnostic, and Compiler-owned ambiguity classification. Syntactic ambiguity
+that collapses to one value is distinct from ambiguity with observable semantic
+alternatives; partial semantic failures remain visible instead of discarding
+successful derivations.
+
 Grammar-REPL 0.4.0 completes the engine family with LL(1) and the SL and EL
 variants of Earley Table Traversal. LL-incompatible grammars carry an explicit
 unsupported capability result instead of being presented as rejected input.

@@ -24,7 +24,7 @@ let package = Package(
         .package(url: "https://github.com/hakkabon/LL-Parsing.git", .upToNextMinor(from: "0.1.0")),
         .package(url: "https://github.com/hakkabon/Earley-TableParser.git", .upToNextMinor(from: "0.1.0")),
         .package(url: "https://github.com/hakkabon/GrammarDiagram.git", .upToNextMinor(from: "0.1.0")),
-        .package(url: "https://github.com/hakkabon/Compiler.git", .upToNextMinor(from: "0.2.0")),
+        .package(url: "https://github.com/hakkabon/Compiler.git", .upToNextMinor(from: "0.3.0")),
     ],
     targets: [
         .target(

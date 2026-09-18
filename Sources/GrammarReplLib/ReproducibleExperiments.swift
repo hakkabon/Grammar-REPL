@@ -8,14 +8,14 @@ import struct Compiler.CompilerSemanticEngineInput
 import enum Compiler.CompilerSemanticConvergence
 
 public enum GrammarREPLRelease {
-    public static let version = "0.7.0"
+    public static let version = "0.8.0"
 }
 
 /// A self-contained, path- and time-independent record of an engine comparison.
 /// The grammar and parser settings are inputs; normalized contracts and tree
 /// fingerprints are the expected observations.
 public struct REPLExperimentDocument: Codable {
-    public static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = 3
     public static let fingerprintAlgorithm = "fnv1a64"
 
     public let schemaVersion: Int
@@ -122,7 +122,9 @@ public struct REPLExperimentDocument: Codable {
             throw REPLExperimentError.invalidEngineOrder
         }
         let semanticEvidenceIsValid = value.semanticReport.map {
-            $0.schemaVersion == CompilerSemanticConvergenceReport.currentSchemaVersion
+            let expectedSchema = value.schemaVersion >= 3
+                ? CompilerSemanticConvergenceReport.currentSchemaVersion : 1
+            return $0.schemaVersion == expectedSchema
                 && $0.observations.map(\.engine) == value.engines.map(\.rawValue)
         } ?? true
         guard (value.semanticMapping == nil) == (value.semanticReport == nil),

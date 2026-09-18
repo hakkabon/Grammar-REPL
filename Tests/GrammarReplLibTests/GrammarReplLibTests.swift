@@ -342,7 +342,7 @@ struct ReproducibleExperimentTests {
 
         let decoded = try REPLExperimentDocument.decode(first.json())
         let verification = try decoded.verify()
-        #expect(decoded.schemaVersion == 2)
+        #expect(decoded.schemaVersion == 3)
         #expect(decoded.engines == REPLParser.allCases)
         #expect(verification.matches)
         #expect(verification.engines.allSatisfy { $0.matches })
@@ -410,6 +410,48 @@ struct ReproducibleExperimentTests {
         #expect(report.observations.filter { $0.status == .evaluated }.count >= 2)
         #expect(report.observations.filter { $0.status == .evaluated }
             .allSatisfy { $0.values == [.integer(42)] })
+        #expect(try decoded.verify().semanticMatches)
+    }
+
+    @Test func preservesAmbiguityAwareCompilerSemantics() throws {
+        let grammar = try Grammar(
+            bnf: """
+            <Expression> ::= <Left> | <Right>
+            <Left> ::= <Difference> "-" <Integer>
+            <Right> ::= <Integer> "-" <Difference>
+            <Difference> ::= <Integer> "-" <Integer>
+            <Integer> ::= "8" | "3" | "2"
+            """,
+            start: "Expression"
+        )
+        let comparison = REPLParserExperiment.compare(grammar: grammar, input: "8-3-2")
+        let mapping = ASTMapping(actions: [
+            "Expression": .passThrough,
+            "Left": .binary(leftChild: 0, operatorChild: 1, rightChild: 2),
+            "Right": .binary(leftChild: 0, operatorChild: 1, rightChild: 2),
+            "Difference": .binary(leftChild: 0, operatorChild: 1, rightChild: 2),
+            "Integer": .passThrough,
+            "terminal": .integer,
+        ])
+        let document = try REPLExperimentDocument.capture(
+            grammar: grammar, comparison: comparison, semanticMapping: mapping
+        )
+        let decoded = try REPLExperimentDocument.decode(document.json())
+        let report = try #require(decoded.semanticReport)
+        let ambiguous = report.observations.filter {
+            $0.ambiguity == .semanticallyDivergent
+        }
+
+        #expect(decoded.schemaVersion == 3)
+        #expect(report.schemaVersion == 2)
+        #expect(report.agreement == .complete)
+        #expect(report.ambiguity == .semanticallyDivergent)
+        #expect(!ambiguous.isEmpty)
+        #expect(ambiguous.allSatisfy {
+            $0.ambiguity == .semanticallyDivergent
+                && Set($0.values) == [.integer(3), .integer(7)]
+                && $0.derivations?.count == 2
+        })
         #expect(try decoded.verify().semanticMatches)
     }
 
