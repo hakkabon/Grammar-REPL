@@ -38,7 +38,7 @@ struct EcosystemCorpusConformanceTests {
         #expect(observations[1].root == nil)
         #expect(observations[2].status == "acceptedWithRecovery")
         #expect(observations[2].diagnostics > 0)
-        #expect(observations[2].recoveryEdits > 0)
+        #expect(!observations[2].recoveryEdits.isEmpty)
     }
 
     @Test func rejectsUnknownGrammarReferences() {
@@ -78,6 +78,40 @@ struct EcosystemCorpusConformanceTests {
         #expect(observation.engines?.allSatisfy { $0.status == "accepted" } == true)
         #expect(observation.engines?.filter { $0.forestNodes != nil }.count == 5)
         #expect(observation.engines?.allSatisfy(\.supported) == true)
+    }
+
+    @Test func versionFiveReportsOrderedStructuredRecoveryEdits() throws {
+        let corpus = """
+        {
+          "schemaVersion": 5,
+          "grammars": [{
+            "id": "recovery", "start": "S",
+            "terminals": ["BEGIN", "OPEN", "CLOSE", "JUNK", "MORE"],
+            "precedence": [],
+            "productions": [
+              {"id": "begin", "lhs": "S", "rhs": ["BEGIN"]},
+              {"id": "pair", "lhs": "S", "rhs": ["OPEN", "CLOSE"]}
+            ]
+          }],
+          "cases": [{
+            "id": "insert-skip", "grammar": "recovery", "input": "",
+            "expectedTokenKinds": ["OPEN", "JUNK", "MORE"],
+            "expectedStatus": "acceptedWithRecovery", "tags": ["recovery"]
+          }]
+        }
+        """
+
+        let observation = try #require(
+            GrammarREPLCorpusConformance.evaluate(Data(corpus.utf8)).first
+        )
+        #expect(observation.status == "acceptedWithRecovery")
+        #expect(observation.recoveryEdits.count == 2)
+        #expect(observation.recoveryEdits[0].kind == "insert")
+        #expect(observation.recoveryEdits[0].terminal == "CLOSE")
+        #expect(observation.recoveryEdits[0].atToken == 1)
+        #expect(observation.recoveryEdits[1].kind == "skip")
+        #expect(observation.recoveryEdits[1].terminals == ["JUNK", "MORE"])
+        #expect(observation.recoveryEdits[1].fromToken == 1)
     }
 }
 

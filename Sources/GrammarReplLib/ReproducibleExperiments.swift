@@ -8,7 +8,7 @@ import struct Compiler.CompilerSemanticEngineInput
 import enum Compiler.CompilerSemanticConvergence
 
 public enum GrammarREPLRelease {
-    public static let version = "0.6.0"
+    public static let version = "0.7.0"
 }
 
 /// A self-contained, path- and time-independent record of an engine comparison.

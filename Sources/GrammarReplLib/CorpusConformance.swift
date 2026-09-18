@@ -9,16 +9,61 @@ public struct GrammarREPLCorpusObservation: Codable, Equatable, Sendable {
     public let status: String
     public let root: String?
     public let diagnostics: Int
-    public let recoveryEdits: Int
+    public let recoveryEdits: [GrammarREPLRecoveryObservation]
     public let engines: [GrammarREPLEngineObservation]?
 
-    public init(id: String, status: String, root: String? = nil, diagnostics: Int, recoveryEdits: Int, engines: [GrammarREPLEngineObservation]? = nil) {
+    public init(id: String, status: String, root: String? = nil, diagnostics: Int, recoveryEdits: [GrammarREPLRecoveryObservation], engines: [GrammarREPLEngineObservation]? = nil) {
         self.id = id
         self.status = status
         self.root = root
         self.diagnostics = diagnostics
         self.recoveryEdits = recoveryEdits
         self.engines = engines
+    }
+}
+
+public struct GrammarREPLRecoveryObservation: Codable, Equatable, Sendable {
+    public let kind: String
+    public let terminal: String?
+    public let terminals: [String]?
+    public let atToken: Int?
+    public let fromToken: Int?
+
+    public init(
+        kind: String,
+        terminal: String? = nil,
+        terminals: [String]? = nil,
+        atToken: Int? = nil,
+        fromToken: Int? = nil
+    ) {
+        self.kind = kind
+        self.terminal = terminal
+        self.terminals = terminals
+        self.atToken = atToken
+        self.fromToken = fromToken
+    }
+
+    init(_ edit: RecoveryEdit) {
+        switch edit {
+        case .insert(let terminal, let index):
+            kind = "insert"; self.terminal = corpusTerminal(terminal)
+            terminals = nil; atToken = index; fromToken = nil
+        case .delete(let terminal, let index):
+            kind = "delete"; self.terminal = corpusTerminal(terminal)
+            terminals = nil; atToken = index; fromToken = nil
+        case .skip(let terminals, let index):
+            kind = "skip"; terminal = nil
+            self.terminals = terminals.map(corpusTerminal)
+            atToken = nil; fromToken = index
+        }
+    }
+}
+
+private func corpusTerminal(_ terminal: Terminal) -> String {
+    switch terminal {
+    case .string(let value): value
+    case .meta(let value): value.rawValue
+    default: terminal.description
     }
 }
 
@@ -40,7 +85,7 @@ public struct GrammarREPLEngineObservation: Codable, Equatable, Sendable {
 public enum GrammarREPLCorpusConformance {
     public static func evaluate(_ data: Data) throws -> [GrammarREPLCorpusObservation] {
         let corpus = try JSONDecoder().decode(Corpus.self, from: data)
-        guard (1...4).contains(corpus.schemaVersion) else {
+        guard (1...5).contains(corpus.schemaVersion) else {
             throw CorpusConformanceError("unsupported corpus schema version \(corpus.schemaVersion)")
         }
 
@@ -79,7 +124,7 @@ public enum GrammarREPLCorpusConformance {
                     status: normalizedStatus(result.status),
                     root: result.tree?.root?.name,
                     diagnostics: result.diagnostics.count,
-                    recoveryEdits: result.recoveryEdits.count,
+                    recoveryEdits: result.recoveryEdits.map(GrammarREPLRecoveryObservation.init),
                     engines: engines
                 )
             } catch {
@@ -88,7 +133,7 @@ public enum GrammarREPLCorpusConformance {
                     status: "rejected",
                     root: nil,
                     diagnostics: 1,
-                    recoveryEdits: 0,
+                    recoveryEdits: [],
                     engines: engines
                 )
             }

@@ -666,14 +666,18 @@ Grammar analysis or parser package
 text renderer and retained REPLSession state
 ```
 
-The separate `grammar-repl-conformance` executable is a non-terminal adapter
-for the shared ecosystem corpus. Its decoding, normalized-token LR execution,
+Grammar-REPL 0.7.0 changes the public recovery observation from a count to an
+exact script. The separate `grammar-repl-conformance` executable is a
+non-terminal adapter for the shared ecosystem corpus. Its decoding,
+normalized-token LR execution,
 bounded recovery, and structured observations live in `GrammarReplLib`. Corpus
-versions 1 through 3 are accepted. Version 2 adds normalized tree roots and
+versions 1 through 5 are accepted. Version 2 adds normalized tree roots and
 version 3 adds seven-engine comparison, production-aware replay, and portable
 forest evidence; version 4 completes the ten-engine family and adds explicit
-LL(1) capability observations. Readline, command history, and formatted
-terminal output are not part of the conformance result.
+LL(1) capability observations. Version 5 replaces recovery counts with the
+exact ordered insert/delete/skip script in original-token coordinates.
+Readline, command history, and formatted terminal output are not part of the
+conformance result.
 
 Grammar-REPL 0.4.0 completes the engine family with LL(1) and the SL and EL
 variants of Earley Table Traversal. LL-incompatible grammars carry an explicit
