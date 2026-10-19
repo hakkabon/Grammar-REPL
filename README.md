@@ -736,6 +736,26 @@ The verifier exits successfully only when every recorded engine observation
 and the cross-engine agreement are reproduced. `show` prints a compact summary
 without running the parsers.
 
+Grammar-REPL 0.9.0 introduces experiment projects for repeatable multi-case
+studies. A project gives standalone experiment artifacts stable identifiers,
+canonical ordering, tags, one aggregate fingerprint, and all-or-nothing replay
+verification while preserving each nested artifact's original identity.
+
+```text
+:experiment project-create expression-study.json "Expression study"
+:compare "42"
+:experiment project-add expression-study.json integer
+:experiment show expression-study.json
+:experiment verify expression-study.json
+```
+
+The non-interactive `grammar-repl-experiment` executable supports the same
+`project-create`, `project-add`, `show`, and `verify` lifecycle. Existing
+schema-1 through schema-3 standalone artifacts remain readable and can be
+imported without changing their fingerprints. See
+[`Documentation/ExperimentProjects.md`](Documentation/ExperimentProjects.md)
+and [`Schemas/ExperimentProject.schema.json`](Schemas/ExperimentProject.schema.json).
+
 ### Command decoding
 
 `REPLCommand` is an enum containing one case for every supported operation.

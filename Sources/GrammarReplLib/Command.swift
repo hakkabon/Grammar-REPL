@@ -39,6 +39,8 @@ public enum REPLCommand: Equatable {
     case compare(String?), forest(REPLParser?), playback(parser: REPLParser?, limit: Int?)
     case contract(REPLParser?)
     case experimentSave(String), experimentVerify(String), experimentShow(String)
+    case experimentProjectCreate(path: String, name: String)
+    case experimentProjectAdd(path: String, id: String)
     case semantics(String?)
     case diagram(String), export(artifact: String, path: String)
     case trace(String?), identity(String), precedence(String), resolution(String), conflicts(String?), decisions(Int?)
@@ -72,11 +74,15 @@ public enum REPLCommand: Equatable {
         case "contract": return .contract(REPLParser(rawValue: argument.lowercased()))
         case "experiment":
             let words = shellWords(argument)
-            guard words.count == 2 else { return .unknown(text) }
+            guard words.count >= 2 else { return .unknown(text) }
             switch words[0].lowercased() {
-            case "save": return .experimentSave(words[1])
-            case "verify": return .experimentVerify(words[1])
-            case "show": return .experimentShow(words[1])
+            case "save" where words.count == 2: return .experimentSave(words[1])
+            case "verify" where words.count == 2: return .experimentVerify(words[1])
+            case "show" where words.count == 2: return .experimentShow(words[1])
+            case "project-create" where words.count == 3:
+                return .experimentProjectCreate(path: words[1], name: words[2])
+            case "project-add" where words.count == 3:
+                return .experimentProjectAdd(path: words[1], id: words[2])
             default: return .unknown(text)
             }
         case "semantics": return .semantics(argument.isEmpty ? nil : argument)

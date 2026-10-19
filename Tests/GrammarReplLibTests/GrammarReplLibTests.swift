@@ -149,6 +149,8 @@ struct CommandTests {
         #expect(REPLCommand.decode(":experiment save \"my run.json\"") == .experimentSave("my run.json"))
         #expect(REPLCommand.decode(":experiment verify run.json") == .experimentVerify("run.json"))
         #expect(REPLCommand.decode(":experiment show run.json") == .experimentShow("run.json"))
+        #expect(REPLCommand.decode(":experiment project-create suite.json \"Expression study\"") == .experimentProjectCreate(path: "suite.json", name: "Expression study"))
+        #expect(REPLCommand.decode(":experiment project-add suite.json left-associative") == .experimentProjectAdd(path: "suite.json", id: "left-associative"))
     }
 }
 
@@ -475,6 +477,103 @@ struct ReproducibleExperimentTests {
         #expect(FileManager.default.fileExists(atPath: artifactURL.path))
         #expect(output.contains { $0.hasPrefix("Saved experiment ") })
         #expect(output.contains { $0.hasPrefix("Experiment verified: ") })
+    }
+}
+
+@Suite("Experiment projects")
+struct ExperimentProjectTests {
+    private func document(input: String = "a") throws -> REPLExperimentDocument {
+        let grammar = try Grammar(bnf: "<S> ::= \"a\"", start: "S")
+        return try REPLExperimentDocument.capture(
+            grammar: grammar,
+            comparison: REPLParserExperiment.compare(grammar: grammar, input: input)
+        )
+    }
+
+    @Test func projectIdentityIsCanonicalAndEveryEntryReplays() throws {
+        let accepted = try document()
+        let rejected = try document(input: "b")
+        let project = try REPLExperimentProject.create(
+            name: "Acceptance boundary",
+            description: "Accepted and rejected inputs",
+            experiments: [
+                try .init(id: "rejected", tags: ["boundary", "negative"], experiment: rejected),
+                try .init(id: "accepted", tags: ["positive", "boundary"], experiment: accepted),
+            ]
+        )
+        let decoded = try REPLExperimentProject.decode(project.json())
+        let verification = try decoded.verify()
+
+        #expect(decoded.experiments.map(\.id) == ["accepted", "rejected"])
+        #expect(decoded.experiments[0].tags == ["boundary", "positive"])
+        #expect(decoded.fingerprint == project.fingerprint)
+        #expect(verification.matches)
+        #expect(verification.experiments.count == 2)
+    }
+
+    @Test func importsStandaloneArtifactsAndRejectsDuplicateIdentifiers() throws {
+        let standalone = try document()
+        let project = try REPLExperimentProject.importing(
+            name: "Imported",
+            documents: [(id: "baseline", document: standalone)]
+        )
+
+        #expect(project.experiment(id: "baseline")?.experiment.fingerprint == standalone.fingerprint)
+        #expect(throws: REPLExperimentProjectError.self) {
+            try project.adding(id: "baseline", experiment: standalone)
+        }
+    }
+
+    @Test func rejectsTamperedProjectBeforeReplay() throws {
+        let project = try REPLExperimentProject.importing(
+            name: "Tamper evidence",
+            documents: [(id: "baseline", document: try document())]
+        )
+        var object = try #require(JSONSerialization.jsonObject(with: project.json()) as? [String: Any])
+        object["name"] = "Changed"
+
+        #expect(throws: REPLExperimentProjectError.self) {
+            try REPLExperimentProject.decode(JSONSerialization.data(withJSONObject: object))
+        }
+    }
+
+    @Test func publishedSchemaTracksTheProjectContract() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let data = try Data(contentsOf: root.appendingPathComponent("Schemas/ExperimentProject.schema.json"))
+        let schema = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let properties = try #require(schema["properties"] as? [String: Any])
+        let version = try #require(properties["schemaVersion"] as? [String: Any])
+        let algorithm = try #require(properties["fingerprintAlgorithm"] as? [String: Any])
+
+        #expect(version["const"] as? Int == REPLExperimentProject.currentSchemaVersion)
+        #expect(algorithm["const"] as? String == REPLExperimentProject.fingerprintAlgorithm)
+    }
+
+    @Test func replCreatesAddsShowsAndVerifiesProject() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grammar-repl-project-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let grammarURL = directory.appendingPathComponent("grammar.bnf")
+        let projectURL = directory.appendingPathComponent("study.json")
+        try "<S> ::= \"a\"".write(to: grammarURL, atomically: true, encoding: .utf8)
+
+        var output: [String] = []
+        let repl = GrammarREPL(output: { output.append($0) })
+        repl.execute(.experimentProjectCreate(path: projectURL.path, name: "Study"))
+        repl.execute(.load(path: grammarURL.path, start: "S"))
+        repl.execute(.compare("a"))
+        repl.execute(.experimentProjectAdd(path: projectURL.path, id: "accepts-a"))
+        repl.execute(.experimentShow(projectURL.path))
+        repl.execute(.experimentVerify(projectURL.path))
+
+        let project = try REPLExperimentProject.decode(Data(contentsOf: projectURL))
+        #expect(project.experiments.map(\.id) == ["accepts-a"])
+        #expect(output.contains { $0.hasPrefix("Created experiment project ") })
+        #expect(output.contains { $0.hasPrefix("Experiment project verified: ") })
     }
 }
 

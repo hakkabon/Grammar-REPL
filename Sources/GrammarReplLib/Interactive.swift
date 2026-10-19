@@ -49,7 +49,7 @@ public enum CommandCompletion {
         case ":trace": values = ["on", "off", "clear"]
         case ":identity": values = ["state", "conflict", "production"]
         case ":resolution": values = ["shift", "reduce", "reject", "clear"]
-        case ":experiment": values = ["save", "show", "verify"]
+        case ":experiment": values = ["project-add", "project-create", "save", "show", "verify"]
         default: values = []
         }
         return values.filter { $0.hasPrefix(fragment) }.sorted()

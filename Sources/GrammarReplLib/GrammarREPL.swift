@@ -73,6 +73,10 @@ public final class GrammarREPL {
             case .experimentSave(let path): try saveExperiment(to: path)
             case .experimentVerify(let path): try verifyExperiment(at: path)
             case .experimentShow(let path): try showExperiment(at: path)
+            case .experimentProjectCreate(let path, let name):
+                try createExperimentProject(at: path, name: name)
+            case .experimentProjectAdd(let path, let id):
+                try addExperiment(toProjectAt: path, id: id)
             case .semantics(let path): try configureSemantics(path)
             case .settings: showSettings()
             case .history:
@@ -379,22 +383,29 @@ public final class GrammarREPL {
     }
 
     private func saveExperiment(to path: String) throws {
-        guard let loaded = session.loaded, let comparison = session.lastComparison else {
-            throw Message("Load a grammar and use :compare <input> before saving an experiment.")
-        }
-        let document = try REPLExperimentDocument.capture(
-            grammar: loaded.grammar, comparison: comparison,
-            precedence: session.precedence, resolutionPolicy: session.resolutionPolicy,
-            semanticMapping: session.semanticMapping
-        )
+        let document = try captureExperiment()
         let url = URL(fileURLWithPath: path).standardizedFileURL
         try document.json().write(to: url, options: .atomic)
         output("Saved experiment \(document.fingerprint) to \(url.path).")
     }
 
     private func verifyExperiment(at path: String) throws {
-        let document = try loadExperiment(at: path)
-        let verification = try document.verify()
+        switch try loadExperimentArtifact(at: path) {
+        case .document(let document):
+            try report(document.verify())
+        case .project(let project):
+            let verification = try project.verify()
+            for entry in verification.experiments where !entry.verification.matches {
+                output("\(entry.id): diverged (\(entry.artifactFingerprint)).")
+            }
+            guard verification.matches else {
+                throw Message("Experiment project diverged: \(verification.projectFingerprint).")
+            }
+            output("Experiment project verified: \(verification.projectFingerprint) (\(verification.experiments.count) experiments).")
+        }
+    }
+
+    private func report(_ verification: REPLExperimentVerification) throws {
         for engine in verification.engines where !engine.matches {
             output("\(engine.parser.rawValue): changed \(engine.differences.map(\.rawValue).joined(separator: ", ")).")
         }
@@ -409,7 +420,22 @@ public final class GrammarREPL {
     }
 
     private func showExperiment(at path: String) throws {
-        let document = try loadExperiment(at: path)
+        switch try loadExperimentArtifact(at: path) {
+        case .document(let document):
+            show(document)
+        case .project(let project):
+            output("Experiment project \(project.fingerprint): schema \(project.schemaVersion), producer \(project.producer.name) \(project.producer.version).")
+            output("Name: \(project.name)")
+            if let description = project.description { output("Description: \(description)") }
+            output("Experiments: \(project.experiments.count).")
+            for entry in project.experiments {
+                let tags = entry.tags.isEmpty ? "" : " [\(entry.tags.joined(separator: ", "))]"
+                output("  \(entry.id)\(tags): \(entry.experiment.fingerprint) — \(entry.experiment.input.debugDescription)")
+            }
+        }
+    }
+
+    private func show(_ document: REPLExperimentDocument) {
         output("Experiment \(document.fingerprint): schema \(document.schemaVersion), producer \(document.producer.name) \(document.producer.version).")
         output("Input: \(document.input.debugDescription)")
         output("Engines: \(document.engines.map(\.rawValue).joined(separator: ", ")).")
@@ -417,6 +443,36 @@ public final class GrammarREPL {
         if let semantics = document.semanticReport {
             output("Expected semantic agreement: \(semantics.agreement.rawValue).")
         }
+    }
+
+    private func createExperimentProject(at path: String, name: String) throws {
+        let url = URL(fileURLWithPath: path).standardizedFileURL
+        guard !FileManager.default.fileExists(atPath: url.path) else {
+            throw Message("Refusing to replace existing experiment project at \(url.path).")
+        }
+        let project = try REPLExperimentProject.create(name: name)
+        try project.json().write(to: url, options: .atomic)
+        output("Created experiment project \(project.fingerprint) at \(url.path).")
+    }
+
+    private func addExperiment(toProjectAt path: String, id: String) throws {
+        let url = URL(fileURLWithPath: path).standardizedFileURL
+        let project = try REPLExperimentProject.decode(Data(contentsOf: url))
+        let document = try captureExperiment()
+        let updated = try project.adding(id: id, experiment: document)
+        try updated.json().write(to: url, options: .atomic)
+        output("Added \(id) (\(document.fingerprint)) to project \(updated.fingerprint).")
+    }
+
+    private func captureExperiment() throws -> REPLExperimentDocument {
+        guard let loaded = session.loaded, let comparison = session.lastComparison else {
+            throw Message("Load a grammar and use :compare <input> before saving an experiment.")
+        }
+        return try REPLExperimentDocument.capture(
+            grammar: loaded.grammar, comparison: comparison,
+            precedence: session.precedence, resolutionPolicy: session.resolutionPolicy,
+            semanticMapping: session.semanticMapping
+        )
     }
 
     private func configureSemantics(_ path: String?) throws {
@@ -453,8 +509,8 @@ public final class GrammarREPL {
         )
     }
 
-    private func loadExperiment(at path: String) throws -> REPLExperimentDocument {
-        try REPLExperimentDocument.decode(Data(contentsOf: URL(fileURLWithPath: path)))
+    private func loadExperimentArtifact(at path: String) throws -> REPLExperimentArtifact {
+        try REPLExperimentArtifact.decode(Data(contentsOf: URL(fileURLWithPath: path)))
     }
 
     private func showSettings() {
@@ -649,7 +705,9 @@ public final class GrammarREPL {
       :forest [parser]       Explore a compared parser's portable forest
       :playback [parser] [n] Replay portable semantic parse events
       :contract [parser]     Print a parser's portable contract as JSON
-      :experiment <op> <file> Save, show, or verify a reproducible experiment
+      :experiment save/show/verify <file>
+      :experiment project-create <file> <name>
+      :experiment project-add <file> <id>
       :semantics [file|clear] Load/show/clear a Compiler AST mapping
       :trace [option]        Enable/disable/show/clear LR runtime tracing
       :identity <kind> <n>   Show a stable state/conflict/production ID
