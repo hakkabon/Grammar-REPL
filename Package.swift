@@ -10,13 +10,14 @@ let package = Package(
         .executable(name: "grammar-repl", targets: ["grammar-repl"]),
         .executable(name: "grammar-repl-conformance", targets: ["grammar-repl-conformance"]),
         .executable(name: "grammar-repl-experiment", targets: ["grammar-repl-experiment"]),
+        .executable(name: "grammar-repl-pl0-experiment", targets: ["grammar-repl-pl0-experiment"]),
         .library(name: "GrammarReplLib", targets: ["GrammarReplLib"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.6.2"),
         .package(url: "https://github.com/hakkabon/Grammar.git", .upToNextMinor(from: "0.3.0")),
-        .package(url: "https://github.com/hakkabon/Parser.git", .upToNextMinor(from: "0.3.0")),
-        .package(url: "https://github.com/hakkabon/Lexer.git", .upToNextMinor(from: "0.2.0")),
+        .package(path: "../Parser"),
+        .package(path: "../Lexer"),
         .package(url: "https://github.com/hakkabon/Earley-Parser.git", .upToNextMinor(from: "0.2.0")),
         .package(url: "https://github.com/hakkabon/CYK-Parser.git", .upToNextMinor(from: "0.2.0")),
         .package(url: "https://github.com/hakkabon/RNGLR-Parser.git", .upToNextMinor(from: "0.2.1")),
@@ -24,7 +25,9 @@ let package = Package(
         .package(url: "https://github.com/hakkabon/LL-Parsing.git", .upToNextMinor(from: "0.1.0")),
         .package(url: "https://github.com/hakkabon/Earley-TableParser.git", .upToNextMinor(from: "0.1.0")),
         .package(url: "https://github.com/hakkabon/GrammarDiagram.git", .upToNextMinor(from: "0.1.0")),
-        .package(url: "https://github.com/hakkabon/Compiler.git", .upToNextMinor(from: "0.3.0")),
+        .package(path: "../Compiler"),
+        .package(path: "../PL0-LanguageKit"),
+        .package(path: "../Incremental-Parsing"),
     ],
     targets: [
         .target(
@@ -41,6 +44,7 @@ let package = Package(
                 .product(name: "Earley-TableParser", package: "Earley-TableParser"),
                 .product(name: "GrammarDiagram", package: "GrammarDiagram"),
                 .product(name: "Compiler", package: "Compiler"),
+                .product(name: "IncrementalParsing", package: "Incremental-Parsing"),
             ],
             path: "Sources/GrammarReplLib"
         ),
@@ -63,6 +67,13 @@ let package = Package(
             dependencies: ["GrammarReplLib"],
             path: "Sources/ExperimentCLI"
         ),
+        .executableTarget(
+            name: "grammar-repl-pl0-experiment",
+            dependencies: [
+                .product(name: "PL0FrontendConformance", package: "PL0-LanguageKit"),
+            ],
+            path: "Sources/PL0ExperimentCLI"
+        ),
         .systemLibrary(
             name: "CReadline",
             path: "Sources/CReadline",
@@ -75,6 +86,7 @@ let package = Package(
                 .product(name: "Grammar", package: "Grammar"),
                 .product(name: "Parser", package: "Parser"),
                 .product(name: "LR-Parsing", package: "LR-Parsing"),
+                .product(name: "IncrementalParsing", package: "Incremental-Parsing"),
             ]
         ),
     ]

@@ -96,6 +96,7 @@ The prototype currently supports:
 - conflict witness minimization and relevant-production slices;
 - generation benchmark/stress instrumentation;
 - an observable incremental LR parsing prototype;
+- shared revisioned-source input and truthful full-validation fallback evidence;
 - a transport-neutral language-server document service.
 
 The prototype does **not** yet implement:

@@ -4,6 +4,7 @@ import Grammar
 import struct Compiler.ASTMapping
 import Parser
 import LR_Parsing
+import IncrementalParsing
 @testable import GrammarReplLib
 
 @Suite("Ecosystem corpus conformance")
@@ -864,11 +865,22 @@ struct IncrementalParsingTests {
         let unchanged = try session.parse("id + id")
         let edited = try session.parse("id + id + id")
         #expect(first.metrics.performedFullValidation)
+        #expect(first.metrics.incrementalExecutionEvidence.strategy == .full)
         #expect(!unchanged.metrics.performedFullValidation)
+        #expect(unchanged.metrics.incrementalExecutionEvidence.strategy == .incremental)
         #expect(unchanged.metrics.invalidatedUTF16.length == 0)
         #expect(edited.metrics.commonPrefixUTF16 > 0)
         #expect(edited.metrics.performedFullValidation)
+        #expect(edited.metrics.incrementalExecutionEvidence.strategy == .fallback)
         #expect(edited.outcome.tree != nil)
+    }
+
+    @Test func acceptsSharedRevisionedSnapshots() throws {
+        let grammar = try Grammar(bnf: "<S> ::= \"id\"", start: "S")
+        var session = IncrementalLRSession(grammar: grammar)
+        let result = try session.parse(IncrementalParsing.SourceSnapshot(
+            text: "id", revision: .init(42)))
+        #expect(result.outcome.tree != nil)
     }
 }
 
