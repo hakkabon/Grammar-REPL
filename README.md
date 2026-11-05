@@ -95,15 +95,15 @@ The prototype currently supports:
 - schema-versioned JSON snapshots for workbench and editor clients;
 - conflict witness minimization and relevant-production slices;
 - generation benchmark/stress instrumentation;
-- an observable incremental LR parsing prototype;
-- shared revisioned-source input and truthful full-validation fallback evidence;
+- native resumable LR stack checkpoints with shared operational evidence;
+- shared revisioned-source input and differential full validation;
 - a transport-neutral language-server document service.
 
-The prototype does **not** yet implement:
-
-- resumable LR stack checkpoints (edited input is incrementally analyzed and
-  then fully validated);
-- JSON-RPC process framing for a standalone Language Server Protocol executable.
+The incremental session resumes LR-Parsing's native stack runtime and retains a
+normal positioned parse as a correctness/source-range projection. Directly
+projecting runtime nodes to positioned `ParseTree` values will eventually make
+that second pass unnecessary. JSON-RPC process framing for a standalone
+Language Server Protocol executable also remains future work.
 
 These are planned extensions, not hidden or incomplete commands.
 

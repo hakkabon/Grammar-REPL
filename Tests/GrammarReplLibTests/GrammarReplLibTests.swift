@@ -856,7 +856,7 @@ struct WorkbenchAnalysisToolTests {
     }
 }
 
-@Suite("Incremental parsing prototype")
+@Suite("Native incremental LR parsing")
 struct IncrementalParsingTests {
     @Test func reportsInvalidationAndCachesUnchangedParse() throws {
         let grammar = try Grammar(bnf: "<E> ::= <E> \"+\" \"id\" | \"id\"", start: "E")
@@ -871,7 +871,10 @@ struct IncrementalParsingTests {
         #expect(unchanged.metrics.invalidatedUTF16.length == 0)
         #expect(edited.metrics.commonPrefixUTF16 > 0)
         #expect(edited.metrics.performedFullValidation)
-        #expect(edited.metrics.incrementalExecutionEvidence.strategy == .fallback)
+        #expect(edited.metrics.incrementalExecutionEvidence.strategy == .incremental)
+        #expect(edited.metrics.incrementalExecutionEvidence.measurements.first {
+            $0.dimension == .parserStates
+        }?.reused ?? 0 > 0)
         #expect(edited.outcome.tree != nil)
     }
 

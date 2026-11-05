@@ -18,27 +18,14 @@ public struct IncrementalParseMetrics: Codable, Equatable {
     public let invalidatedUTF16: WorkbenchSourceRange
     public let reusableTraceCheckpoints: Int
     public let performedFullValidation: Bool
+    public let nativeExecutionEvidence: IncrementalExecutionEvidence
 
     public var incrementalInvalidatedRange: IncrementalParsing.SourceRange {
         .init(location: invalidatedUTF16.location, length: invalidatedUTF16.length)
     }
 
     public var incrementalExecutionEvidence: IncrementalParsing.IncrementalExecutionEvidence {
-        if !performedFullValidation {
-            return .init(
-                strategy: .incremental,
-                measurements: [.init(
-                    dimension: .parserStates,
-                    reused: reusableTraceCheckpoints, rebuilt: 0)])
-        }
-        if reusableTraceCheckpoints > 0 || commonPrefixUTF16 > 0 {
-            return .init(
-                strategy: .fallback,
-                fallback: .init(
-                    code: "grammarRepl.fullValidation",
-                    detail: "Reusable trace boundaries were observed, but the normal parser performed validation."))
-        }
-        return .init(strategy: .full)
+        nativeExecutionEvidence
     }
 }
 
@@ -47,18 +34,26 @@ public struct IncrementalParseResult {
     public let metrics: IncrementalParseMetrics
 }
 
-/// An observable incremental-parsing prototype. It computes edit invalidation
-/// and reusable LR trace checkpoints, while deliberately validating the result
-/// with the normal parser until LR-Parsing exposes resumable stack checkpoints.
+/// Uses LR-Parsing's native resumable stack runtime. The normal positioned
+/// parser is retained as a correctness and source-range projection until its
+/// public tree adapter can consume runtime nodes directly.
 public struct IncrementalLRSession {
     public let grammar: Grammar
     public let algorithm: LRParser.Algorithm
     public let precedence: LRPrecedenceSpecification?
     private var previousSnapshot: IncrementalParsing.SourceSnapshot?
     private var previousOutcome: LRParseResult?
+    private let parser: LRParser
+    private let runtime: LRIncrementalRuntime
+    private let runtimeTable: LRRuntimeTable
 
     public init(grammar: Grammar, algorithm: LRParser.Algorithm = .lalr, precedence: LRPrecedenceSpecification? = nil) {
         self.grammar = grammar; self.algorithm = algorithm; self.precedence = precedence
+        let parser = LRParser(
+            grammar: grammar, algorithm: algorithm, precedence: precedence)
+        self.parser = parser
+        runtime = LRIncrementalRuntime()
+        runtimeTable = parser.incrementalRuntimeTable()
     }
 
     public mutating func parse(_ source: String, recovery: RecoveryPolicy = .none) throws -> IncrementalParseResult {
@@ -73,20 +68,26 @@ public struct IncrementalLRSession {
         recovery: RecoveryPolicy = .none
     ) throws -> IncrementalParseResult {
         let source = snapshot.text
+        let tokens = try parser.incrementalRuntimeTokens(for: source)
+        let runtimeRecovery: LRRuntimeRecovery = switch recovery {
+        case .none: .disabled
+        case .localRepair(let maximum): .init(maximumDiagnostics: maximum)
+        case .panic: .init(maximumDiagnostics: 32)
+        }
+        let native = runtime.parse(
+            tokens, table: runtimeTable, recovery: runtimeRecovery)
         if source == previousSnapshot?.text, let outcome = previousOutcome {
             let count = source.utf16.count
             previousSnapshot = snapshot
-            return .init(outcome: outcome, metrics: .init(commonPrefixUTF16: count, commonSuffixUTF16: 0, invalidatedUTF16: .init(location: count, length: 0), reusableTraceCheckpoints: outcome.trace.count, performedFullValidation: false))
+            return .init(outcome: outcome, metrics: .init(commonPrefixUTF16: count, commonSuffixUTF16: 0, invalidatedUTF16: .init(location: count, length: 0), reusableTraceCheckpoints: native.reusedFrameCount, performedFullValidation: false, nativeExecutionEvidence: native.evidence))
         }
         let old = previousSnapshot?.text ?? ""
         let prefix = commonPrefix(old, source)
         let suffix = commonSuffix(old, source, excludingPrefix: prefix)
-        let prefixText = String(decoding: source.utf16.prefix(prefix), as: UTF16.self)
-        let reusable = previousOutcome?.trace.filter { $0.tokenIndex <= tokenBoundaryCount(prefixText) }.count ?? 0
-        let outcome = try LRParser(grammar: grammar, algorithm: algorithm, precedence: precedence).parseOutcome(source, recovery: recovery, tracing: true)
+        let outcome = try parser.parseOutcome(source, recovery: recovery, tracing: true)
         previousSnapshot = snapshot
         previousOutcome = outcome
-        return .init(outcome: outcome, metrics: .init(commonPrefixUTF16: prefix, commonSuffixUTF16: suffix, invalidatedUTF16: .init(location: prefix, length: max(0, source.utf16.count - prefix - suffix)), reusableTraceCheckpoints: reusable, performedFullValidation: true))
+        return .init(outcome: outcome, metrics: .init(commonPrefixUTF16: prefix, commonSuffixUTF16: suffix, invalidatedUTF16: .init(location: prefix, length: max(0, source.utf16.count - prefix - suffix)), reusableTraceCheckpoints: native.reusedFrameCount, performedFullValidation: true, nativeExecutionEvidence: native.evidence))
     }
 
     private func commonPrefix(_ left: String, _ right: String) -> Int {
@@ -98,7 +99,6 @@ public struct IncrementalLRSession {
         return zip(left.utf16.reversed(), right.utf16.reversed()).prefix(maxLength: maximum) { $0 == $1 }.count
     }
 
-    private func tokenBoundaryCount(_ prefix: String) -> Int { prefix.split(whereSeparator: \.isWhitespace).count }
 }
 
 private extension Sequence {
