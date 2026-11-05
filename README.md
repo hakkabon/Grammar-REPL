@@ -694,6 +694,18 @@ Its engine-property suite verifies replay termination, stable ordering, forest
 references and extents, production identity, transition-free portable
 snapshots, and exact Catalan derivation counts across repeated runs.
 
+### PL/0 product campaign
+
+The headless PL/0 entry point runs the language-kit-owned incremental product
+campaign without redefining its cases or evidence:
+
+```sh
+swift run grammar-repl-pl0-experiment product-campaign repl-product.json
+```
+
+The report is compatible with `incremental-report verify`, `compare`, and
+`gate`.
+
 ### Reproducible experiments
 
 Grammar-REPL 0.6.0 can turn a comparison into a self-contained experiment:

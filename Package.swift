@@ -71,6 +71,7 @@ let package = Package(
             name: "grammar-repl-pl0-experiment",
             dependencies: [
                 .product(name: "PL0FrontendConformance", package: "PL0-LanguageKit"),
+                .product(name: "IncrementalParsing", package: "Incremental-Parsing"),
             ],
             path: "Sources/PL0ExperimentCLI"
         ),
