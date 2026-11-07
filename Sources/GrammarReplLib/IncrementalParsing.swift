@@ -19,6 +19,9 @@ public struct IncrementalParseMetrics: Codable, Equatable {
     public let reusableTraceCheckpoints: Int
     public let performedFullValidation: Bool
     public let nativeExecutionEvidence: IncrementalExecutionEvidence
+    /// The package-owned checkpoint runtime and positioned compatibility parse
+    /// agreed on acceptance and exact repair count.
+    public let runtimeConverged: Bool
 
     public var incrementalInvalidatedRange: IncrementalParsing.SourceRange {
         .init(location: invalidatedUTF16.location, length: invalidatedUTF16.length)
@@ -26,6 +29,51 @@ public struct IncrementalParseMetrics: Codable, Equatable {
 
     public var incrementalExecutionEvidence: IncrementalParsing.IncrementalExecutionEvidence {
         nativeExecutionEvidence
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case commonPrefixUTF16
+        case commonSuffixUTF16
+        case invalidatedUTF16
+        case reusableTraceCheckpoints
+        case performedFullValidation
+        case nativeExecutionEvidence
+        case runtimeConverged
+    }
+
+    public init(
+        commonPrefixUTF16: Int,
+        commonSuffixUTF16: Int,
+        invalidatedUTF16: WorkbenchSourceRange,
+        reusableTraceCheckpoints: Int,
+        performedFullValidation: Bool,
+        nativeExecutionEvidence: IncrementalExecutionEvidence,
+        runtimeConverged: Bool
+    ) {
+        self.commonPrefixUTF16 = commonPrefixUTF16
+        self.commonSuffixUTF16 = commonSuffixUTF16
+        self.invalidatedUTF16 = invalidatedUTF16
+        self.reusableTraceCheckpoints = reusableTraceCheckpoints
+        self.performedFullValidation = performedFullValidation
+        self.nativeExecutionEvidence = nativeExecutionEvidence
+        self.runtimeConverged = runtimeConverged
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        commonPrefixUTF16 = try container.decode(Int.self, forKey: .commonPrefixUTF16)
+        commonSuffixUTF16 = try container.decode(Int.self, forKey: .commonSuffixUTF16)
+        invalidatedUTF16 = try container.decode(WorkbenchSourceRange.self, forKey: .invalidatedUTF16)
+        reusableTraceCheckpoints = try container.decode(Int.self, forKey: .reusableTraceCheckpoints)
+        performedFullValidation = try container.decode(Bool.self, forKey: .performedFullValidation)
+        nativeExecutionEvidence = try container.decode(
+            IncrementalExecutionEvidence.self,
+            forKey: .nativeExecutionEvidence
+        )
+        runtimeConverged = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .runtimeConverged
+        ) ?? false
     }
 }
 
@@ -79,7 +127,7 @@ public struct IncrementalLRSession {
         if source == previousSnapshot?.text, let outcome = previousOutcome {
             let count = source.utf16.count
             previousSnapshot = snapshot
-            return .init(outcome: outcome, metrics: .init(commonPrefixUTF16: count, commonSuffixUTF16: 0, invalidatedUTF16: .init(location: count, length: 0), reusableTraceCheckpoints: native.reusedFrameCount, performedFullValidation: false, nativeExecutionEvidence: native.evidence))
+            return .init(outcome: outcome, metrics: .init(commonPrefixUTF16: count, commonSuffixUTF16: 0, invalidatedUTF16: .init(location: count, length: 0), reusableTraceCheckpoints: native.reusedFrameCount, performedFullValidation: false, nativeExecutionEvidence: native.evidence, runtimeConverged: Self.converged(native: native.result, positioned: outcome)))
         }
         let old = previousSnapshot?.text ?? ""
         let prefix = commonPrefix(old, source)
@@ -87,7 +135,7 @@ public struct IncrementalLRSession {
         let outcome = try parser.parseOutcome(source, recovery: recovery, tracing: true)
         previousSnapshot = snapshot
         previousOutcome = outcome
-        return .init(outcome: outcome, metrics: .init(commonPrefixUTF16: prefix, commonSuffixUTF16: suffix, invalidatedUTF16: .init(location: prefix, length: max(0, source.utf16.count - prefix - suffix)), reusableTraceCheckpoints: native.reusedFrameCount, performedFullValidation: true, nativeExecutionEvidence: native.evidence))
+        return .init(outcome: outcome, metrics: .init(commonPrefixUTF16: prefix, commonSuffixUTF16: suffix, invalidatedUTF16: .init(location: prefix, length: max(0, source.utf16.count - prefix - suffix)), reusableTraceCheckpoints: native.reusedFrameCount, performedFullValidation: true, nativeExecutionEvidence: native.evidence, runtimeConverged: Self.converged(native: native.result, positioned: outcome)))
     }
 
     private func commonPrefix(_ left: String, _ right: String) -> Int {
@@ -97,6 +145,19 @@ public struct IncrementalLRSession {
     private func commonSuffix(_ left: String, _ right: String, excludingPrefix prefix: Int) -> Int {
         let maximum = min(left.utf16.count, right.utf16.count) - prefix
         return zip(left.utf16.reversed(), right.utf16.reversed()).prefix(maxLength: maximum) { $0 == $1 }.count
+    }
+
+    private static func converged(
+        native: LRRuntimeResult,
+        positioned: LRParseResult
+    ) -> Bool {
+        let nativeAccepted: Bool
+        switch native.outcome {
+        case .accepted: nativeAccepted = true
+        case .rejected, .conflict, .looping: nativeAccepted = false
+        }
+        return nativeAccepted == (positioned.status != .rejected)
+            && native.recoveryEdits.count == positioned.recoveryEdits.count
     }
 
 }

@@ -625,14 +625,18 @@ reports to platform-specific baselines without making unit tests depend on
 machine speed. The tests exercise structural assertions; LR-Parsing's grammar
 fuzzer continues to supply randomized generation and identity invariants.
 
-### Incremental parsing prototype
+### Native incremental LR session
 
-`IncrementalLRSession` retains the previous source and traced result. It reports
-the common UTF-16 prefix and suffix, the invalidated range, and the number of
-trace checkpoints preceding the edit. An unchanged source reuses its previous
-result. Edited input is currently parsed normally and fully validated; the
-metrics expose where a future resumable LR engine can restart without claiming
-subtree or stack reuse that has not occurred yet.
+`IncrementalLRSession` drives LR-Parsing's package-owned resumable stack
+runtime and reports its operational reuse evidence. A positioned compatibility
+parse is retained for source-range and tree projection, and
+`runtimeConverged` records agreement on acceptance and exact repair count.
+Removing that validation pass requires a direct projection from native runtime
+nodes to positioned `ParseTree` values.
+
+`GrammarREPLToolingConsumer` independently lets the REPL host any external
+`LanguageToolingProvider` through the shared revision-validating document
+lifecycle, without importing a specific language kit into the library target.
 
 ### Language-server façade
 

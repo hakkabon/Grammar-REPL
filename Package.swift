@@ -28,6 +28,7 @@ let package = Package(
         .package(path: "../Compiler"),
         .package(path: "../PL0-LanguageKit"),
         .package(path: "../Incremental-Parsing"),
+        .package(path: "../Language-Tooling"),
     ],
     targets: [
         .target(
@@ -45,6 +46,7 @@ let package = Package(
                 .product(name: "GrammarDiagram", package: "GrammarDiagram"),
                 .product(name: "Compiler", package: "Compiler"),
                 .product(name: "IncrementalParsing", package: "Incremental-Parsing"),
+                .product(name: "LanguageTooling", package: "Language-Tooling"),
             ],
             path: "Sources/GrammarReplLib"
         ),
@@ -88,6 +90,8 @@ let package = Package(
                 .product(name: "Parser", package: "Parser"),
                 .product(name: "LR-Parsing", package: "LR-Parsing"),
                 .product(name: "IncrementalParsing", package: "Incremental-Parsing"),
+                .product(name: "LanguageTooling", package: "Language-Tooling"),
+                .product(name: "PL0Language", package: "PL0-LanguageKit"),
             ]
         ),
     ]

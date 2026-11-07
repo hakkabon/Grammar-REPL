@@ -5,6 +5,8 @@ import struct Compiler.ASTMapping
 import Parser
 import LR_Parsing
 import IncrementalParsing
+import LanguageTooling
+import PL0Language
 @testable import GrammarReplLib
 
 @Suite("Ecosystem corpus conformance")
@@ -875,6 +877,7 @@ struct IncrementalParsingTests {
         #expect(edited.metrics.incrementalExecutionEvidence.measurements.first {
             $0.dimension == .parserStates
         }?.reused ?? 0 > 0)
+        #expect(edited.metrics.runtimeConverged)
         #expect(edited.outcome.tree != nil)
     }
 
@@ -884,6 +887,24 @@ struct IncrementalParsingTests {
         let result = try session.parse(IncrementalParsing.SourceSnapshot(
             text: "id", revision: .init(42)))
         #expect(result.outcome.tree != nil)
+    }
+}
+
+@Suite("Shared language tooling consumer")
+struct SharedLanguageToolingConsumerTests {
+    @Test func consumesExternalKitWithoutParserSpecificState() async throws {
+        let consumer = GrammarREPLToolingConsumer(provider: PL0Provider())
+        let source = "var value; begin value := 1 end."
+        let analysis = try await consumer.open(.init(
+            text: source, revision: .init(1)))
+        let completions = try await consumer.completions(
+            at: .init(line: 0, character: 20))
+        let tokens = try await consumer.semanticTokens()
+
+        #expect(consumer.descriptor.id == "pl0")
+        #expect(analysis.languageID == "pl0")
+        #expect(completions.contains { $0.label == "value" })
+        #expect(!tokens.data.isEmpty)
     }
 }
 
