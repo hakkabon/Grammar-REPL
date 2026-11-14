@@ -7,6 +7,13 @@ import LanguageTooling
 public struct GrammarREPLToolingConsumer: Sendable {
     public let document: LanguageToolingDocument
 
+    public static func makeProject(
+        providers: [any LanguageToolingProvider],
+        resolver: (any LanguageToolingProjectResolver)? = nil
+    ) -> LanguageToolingProject {
+        LanguageToolingProject(providers: providers, resolver: resolver)
+    }
+
     public init(provider: any LanguageToolingProvider) {
         document = LanguageToolingDocument(provider: provider)
     }
